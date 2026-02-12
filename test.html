@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Test - Trading Environment</title>
+    <link rel="stylesheet" href="css/test.css">
+</head>
+<body>
+    <div class="header">
+        <div class="left">
+            <h1>📈 Stock Trading Test</h1>
+            <div class="mode-badge" id="modeBadge">Mode: Classic</div>
+        </div>
+        <div class="right">
+            <button onclick="goHome()" class="btn-home">← Home</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Main Trading Area -->
+        <div class="main-content">
+            <!-- Time & Speed Controls -->
+            <div class="time-controls">
+                <div class="time-display">
+                    <span class="label">Simulated Time:</span>
+                    <span id="timeDisplay">Jan 1, 2024</span>
+                </div>
+                <div class="speed-controls">
+                    <button onclick="setSpeed(1)" class="speed-btn" id="speed1x">1x</button>
+                    <button onclick="setSpeed(2)" class="speed-btn" id="speed2x">2x</button>
+                    <button onclick="setSpeed(5)" class="speed-btn" id="speed5x">5x</button>
+                    <button onclick="setSpeed(10)" class="speed-btn" id="speed10x">10x</button>
+                    <button id="pauseBtn" onclick="togglePause()" class="speed-btn pause">⏸ Pause</button>
+                </div>
+            </div>
+
+            <!-- Stock Type Filter -->
+            <div class="filter-section">
+                <button class="filter-btn active" onclick="filterByType('all')">All Stocks</button>
+                <button class="filter-btn" onclick="filterByType('growth')">Growth</button>
+                <button class="filter-btn" onclick="filterByType('dividend')">Dividend</button>
+                <button class="filter-btn" onclick="filterByType('etf')">ETFs</button>
+                <button class="filter-btn" onclick="filterByType('bond')">Bonds</button>
+            </div>
+
+            <!-- Stocks Grid -->
+            <div class="stocks-grid" id="stocksGrid"></div>
+
+            <!-- Trading Panel with Chart -->
+            <div class="trading-panel" id="tradingPanel" style="display: none;">
+                <div class="panel-header">
+                    <div class="header-info">
+                        <h3 id="selectedStock">Select a stock to trade</h3>
+                        <div id="stockMeta"></div>
+                    </div>
+                    <div class="price-display">
+                        <div class="current-price" id="currentPrice">$0.00</div>
+                        <div class="price-change" id="priceChange">↑ 0.00%</div>
+                    </div>
+                </div>
+
+                <!-- Chart Container -->
+                <div class="chart-container">
+                    <canvas id="priceChart"></canvas>
+                </div>
+
+                <!-- Stock Stats -->
+                <div class="stock-stats">
+                    <div class="stat-box">
+                        <span class="stat-label">52W High</span>
+                        <span class="stat-value" id="stat52hHigh">$0.00</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">52W Low</span>
+                        <span class="stat-value" id="stat52hLow">$0.00</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Avg Volume</span>
+                        <span class="stat-value" id="statVolume">0</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Market Cap</span>
+                        <span class="stat-value" id="statMarketCap">$0B</span>
+                    </div>
+                </div>
+
+                <!-- Trading Form -->
+                <div class="trade-form">
+                    <input type="number" id="shareAmount" placeholder="Number of shares" min="1" step="1">
+                    <div class="quick-buy">
+                        <button class="btn-buy" onclick="buyStock()">BUY</button>
+                        <button class="btn-sell" onclick="sellStock()">SELL</button>
+                    </div>
+                </div>
+                <div id="tradeMessage" class="trade-message" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <!-- Portfolio Summary -->
+            <div class="info-box portfolio-box">
+                <h3>💼 Portfolio</h3>
+                <div class="cash-display" id="cashDisplay">Cash: $25,000.00</div>
+                <div class="total-value" id="totalValueDisplay">Total: $25,000.00</div>
+                <div class="profit-loss" id="profitLossDisplay">P/L: +$0.00</div>
+                <div class="profit-percent" id="profitPercentDisplay">Return: 0.00%</div>
+            </div>
+
+            <!-- Mode-Specific Stats -->
+            <div class="info-box mode-stats" id="modeStats" style="display: none;">
+                <h3 id="modeStatsTitle">Mode Stats</h3>
+                <div id="modeStatsContent"></div>
+            </div>
+
+            <!-- Holdings -->
+            <div class="info-box holdings-box">
+                <h3>📊 Holdings</h3>
+                <div id="holdings" class="holdings-list">
+                    <div style="color: #999; text-align: center; padding: 15px;">No holdings</div>
+                </div>
+            </div>
+
+            <!-- Recent Trades -->
+            <div class="info-box trades-box">
+                <h3>📝 Recent Trades</h3>
+                <div id="recentTrades" class="trades-list">
+                    <div style="color: #999; text-align: center; padding: 15px;">No trades yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charting Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    
+    <!-- Scripts -->
+    <script src="js/stocks-data.js"></script>
+    <script src="js/enhanced-simulator.js"></script>
+    <script src="js/test-game.js"></script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Testing - Start Page</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        /* Wavy background effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 120"><path d="M0,50 Q300,0 600,50 T1200,50 L1200,120 L0,120 Z" fill="rgba(255,255,255,0.1)"/><path d="M0,60 Q300,10 600,60 T1200,60 L1200,120 L0,120 Z" fill="rgba(255,255,255,0.05)"/></svg>') repeat-x;
+            background-size: 600px 120px;
+            animation: wave 15s linear infinite;
+            z-index: 1;
+        }
+
+        @keyframes wave {
+            0% {
+                background-position: 0 0;
+            }
+            100% {
+                background-position: 600px 0;
+            }
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 60px 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            z-index: 10;
+            position: relative;
+            min-width: 350px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 40px;
+            font-size: 28px;
+        }
+
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-start:hover {
+            background: linear-gradient(135deg, #5568d3 0%, #6a3d90 100%);
+        }
+
+        .btn-bot {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-bot:hover {
+            background: linear-gradient(135deg, #e87aeb 0%, #e3465a 100%);
+        }
+
+        .btn-options {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+
+        .btn-options:hover {
+            background: linear-gradient(135deg, #3d9ce6 0%, #00d4e6 100%);
+        }
+
+        .btn-help {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: white;
+        }
+
+        .btn-help:hover {
+            background: linear-gradient(135deg, #f05884 0%, #fdd137 100%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Stock Testing</h1>
+        <p style="color: #999; font-size: 12px; margin-bottom: 20px;">Professional Trading Simulator with Bot Integration</p>
+        <div class="button-group">
+            <button class="btn-start" onclick="startTest()">Start the Test</button>
+            <button class="btn-bot" onclick="connectBot()">Hook up Bot</button>
+            <button class="btn-options" onclick="openOptions()">Options</button>
+            <button class="btn-help" onclick="openHelp()">Help</button>
+        </div>
+    </div>
+
+    <script>
+        function startTest() {
+            // Clear config so it uses defaults if "Options" wasn't clicked
+            sessionStorage.removeItem('gameConfig');
+            window.location.href = 'test.html';
+        }
+
+        function connectBot() {
+            window.location.href = 'bot-connection.html';
+        }
+
+        function openOptions() {
+            window.location.href = 'options.html';
+
+        function openHelp() {
+            window.location.href = 'help.html';
+        }
+        }
+    </script>
+</body>
+</html>

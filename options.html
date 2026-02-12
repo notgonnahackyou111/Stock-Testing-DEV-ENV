@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Options - Stock Testing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 28px;
+        }
+
+        .header button {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid white;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .header button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .option-group {
+            margin-bottom: 30px;
+            padding-bottom: 30px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .option-group:last-child {
+            border-bottom: none;
+        }
+
+        .option-group h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .option-description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .option-inputs {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .input-wrapper {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-wrapper label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .input-wrapper input,
+        .input-wrapper select {
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .input-wrapper input:focus,
+        .input-wrapper select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .radio-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .radio-option input[type="radio"] {
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+        }
+
+        .radio-option label {
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .info-box {
+            background: #f0f7ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 13px;
+            color: #333;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            justify-content: center;
+        }
+
+        button.btn-start {
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button.btn-start:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        button.btn-cancel {
+            padding: 15px 40px;
+            background: #e5e7eb;
+            color: #333;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button.btn-cancel:hover {
+            background: #d1d5db;
+        }
+
+        .emoji {
+            font-size: 20px;
+        }
+
+        .summary-box {
+            background: #f3f4f6;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border: 1px solid #ddd;
+        }
+
+        .summary-box h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            color: #666;
+        }
+
+        .summary-item strong {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚙️ Game Options</h1>
+        <button onclick="goHome()">← Back</button>
+    </div>
+
+    <div class="container">
+        <!-- Starting Capital -->
+        <div class="option-group">
+            <h2><span class="emoji">💰</span> Starting Capital</h2>
+            <p class="option-description">Choose how much virtual money you want to start with</p>
+            <div class="input-wrapper">
+                <label>Starting Capital ($)</label>
+                <input type="number" id="startingCapital" value="25000" min="5000" step="1000">
+            </div>
+            <div class="info-box">
+                💡 Tip: Higher starting capital gives you more flexibility but also requires better strategy to maintain profits.
+            </div>
+        </div>
+
+        <!-- Risk Level -->
+        <div class="option-group">
+            <h2><span class="emoji">🎯</span> Risk Level</h2>
+            <p class="option-description">Affects stock volatility and potential gains/losses</p>
+            <div class="radio-group">
+                <div class="radio-option">
+                    <input type="radio" id="conservative" name="riskLevel" value="conservative" checked>
+                    <label for="conservative"><strong>Conservative</strong><br><span style="font-size: 12px; color: #666;">Low volatility, stable</span></label>
+                </div>
+                <div class="radio-option">
+                    <input type="radio" id="moderate" name="riskLevel" value="moderate">
+                    <label for="moderate"><strong>Moderate</strong><br><span style="font-size: 12px; color: #666;">Balanced risk/reward</span></label>
+                </div>
+                <div class="radio-option">
+                    <input type="radio" id="aggressive" name="riskLevel" value="aggressive">
+                    <label for="aggressive"><strong>Aggressive</strong><br><span style="font-size: 12px; color: #666;">High volatility, high gains</span></label>
+                </div>
+            </div>
+            <div class="info-box">
+                📊 Stock volatility multiplier: Conservative=0.5x | Moderate=1.0x | Aggressive=1.8x
+            </div>
+        </div>
+
+        <!-- Game Mode -->
+        <div class="option-group">
+            <h2><span class="emoji">🎮</span> Game Mode</h2>
+            <p class="option-description">Select your trading experience style</p>
+            <div class="radio-group">
+                <div class="radio-option">
+                    <input type="radio" id="classic" name="mode" value="classic" checked>
+                    <label for="classic"><strong>Classic</strong><br><span style="font-size: 12px; color: #666;">Standard trading</span></label>
+                </div>
+                <div class="radio-option">
+                    <input type="radio" id="challenge" name="mode" value="challenge">
+                    <label for="challenge"><strong>Challenge</strong><br><span style="font-size: 12px; color: #666;">Meet daily targets</span></label>
+                </div>
+                <div class="radio-option">
+                    <input type="radio" id="portfolio" name="mode" value="portfolio">
+                    <label for="portfolio"><strong>Portfolio</strong><br><span style="font-size: 12px; color: #666;">Build balanced portfolio</span></label>
+                </div>
+                <div class="radio-option">
+                    <input type="radio" id="daytrader" name="mode" value="daytrader">
+                    <label for="daytrader"><strong>Day Trader</strong><br><span style="font-size: 12px; color: #666;">Fast-paced intraday</span></label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Difficulty -->
+        <div class="option-group">
+            <h2><span class="emoji">⭐</span> Difficulty</h2>
+            <p class="option-description">Adjust market behavior and starting capital</p>
+            <div class="radio-group">
+                <div class="radio-option">
+                    <input type="radio" id="easy" name="difficulty" value="easy">
+                    <label for="easy"><strong>Easy</strong><br><span style="font-size: 12px; color: #666;">$50,000 start, stable</span></label>
+                </div>
+                <div class="radio-option">
+                    <input type="radio" id="medium" name="difficulty" value="medium" checked>
+                    <label for="medium"><strong>Medium</strong><br><span style="font-size: 12px; color: #666;">$25,000 start, normal</span></label>
+                </div>
+                <div class="radio-option">
+                    <input type="radio" id="hard" name="difficulty" value="hard">
+                    <label for="hard"><strong>Hard</strong><br><span style="font-size: 12px; color: #666;">$10,000 start, volatile</span></label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="summary-box">
+            <h3>Your Configuration</h3>
+            <div class="summary-item">
+                <span>Capital:</span>
+                <strong>$<span id="summaryCapital">25000</span></strong>
+            </div>
+            <div class="summary-item">
+                <span>Risk Level:</span>
+                <strong><span id="summaryRisk">Moderate</span></strong>
+            </div>
+            <div class="summary-item">
+                <span>Mode:</span>
+                <strong><span id="summaryMode">Classic</span></strong>
+            </div>
+            <div class="summary-item">
+                <span>Difficulty:</span>
+                <strong><span id="summaryDifficulty">Medium</span></strong>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="buttons">
+            <button class="btn-cancel" onclick="goHome()">Cancel</button>
+            <button class="btn-start" onclick="startTest()">Start Test</button>
+        </div>
+    </div>
+
+    <script>
+        // Update summary on change
+        function updateSummary() {
+            const capital = document.getElementById('startingCapital').value;
+            const risk = document.querySelector('input[name="riskLevel"]:checked').id;
+            const mode = document.querySelector('input[name="mode"]:checked').id;
+            const difficulty = document.querySelector('input[name="difficulty"]:checked').id;
+
+            document.getElementById('summaryCapital').textContent = parseInt(capital).toLocaleString();
+            document.getElementById('summaryRisk').textContent = risk.charAt(0).toUpperCase() + risk.slice(1);
+            document.getElementById('summaryMode').textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+            document.getElementById('summaryDifficulty').textContent = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+        }
+
+        // Listen for changes
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('change', updateSummary);
+        });
+
+        function startTest() {
+            const config = {
+                startingCapital: parseInt(document.getElementById('startingCapital').value),
+                riskLevel: document.querySelector('input[name="riskLevel"]:checked').value,
+                mode: document.querySelector('input[name="mode"]:checked').value,
+                difficulty: document.querySelector('input[name="difficulty"]:checked').value
+            };
+
+            // Save to session storage
+            sessionStorage.setItem('gameConfig', JSON.stringify(config));
+            
+            // Redirect based on mode
+            window.location.href = 'test.html';
+        }
+
+        function goHome() {
+            window.location.href = 'index.html';
+        }
+
+        // Initialize summary
+        updateSummary();
+    </script>
+</body>
+</html>

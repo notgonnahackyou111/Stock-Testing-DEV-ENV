@@ -29,8 +29,7 @@
   "devDependencies": {
     "eslint": "^8.50.0",
     "jest": "^29.7.0",
-    "nodemon": "^3.0.1",
-    "puppeteer": "^24.37.2"
+    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=14.0.0",

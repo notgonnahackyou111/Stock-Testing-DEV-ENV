@@ -75,14 +75,51 @@ A comprehensive, professional-grade stock market simulation platform for safely 
 # Install dependencies
 npm install
 
-# Start the backend server (port 8000)
+# Start the backend server.
+# You can bind to a specific port with PORT or supply a
+# comma-separated list so the server will fall back if a port is busy:
+#
+#   export PORT=8000            # only 8000
+#   export PORTS=8000,8001,8002 # try 8000, then 8001, etc.
+#
+# The app will log which port it ultimately listens on.
 npm start
 
-# In another terminal, start development mode
+# In another terminal, start development mode (auto-restarts on change)
 npm run dev
 
-# Open http://localhost:8000 in your browser
+# Open http://localhost:8000 (or whatever port was chosen) in your browser
 ```
+
+### Keeping it running 24/7
+If you want the simulator to stay online without manual intervention, run it
+under a process manager such as [PM2](https://pm2.keymetrics.io/):
+
+```bash
+# install globally if you haven't already
+npm install -g pm2
+
+# start with the bundled ecosystem file (uses backup ports)
+pm run pm2:start
+
+# or start directly with an environment variable:
+pm run pm2 -- start server.js --name stock-simulator --env production -- PORTS=8000,8001,8002
+
+# view logs
+pm2 logs stock-simulator
+# restart on system boot
+pm2 startup
+pm2 save
+```
+
+The example `ecosystem.config.js` in the repo is preconfigured with
+backup ports, log paths, and autorestart policy.  On a Linux host you can
+also create a `systemd` unit or Docker container with `restart: always`.
+
+Once the process manager is installed and configured, you can power the
+machine on/off freely — the service will come up automatically and will
+be restarted if it crashes, keeping the simulation accessible 24/7.
+
 
 ---
 

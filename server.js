@@ -18,13 +18,49 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+/**
+ * Attempt to bind the HTTP server on one of the provided ports.
+ * If the first port is already in use, try the next, etc.
+ * When successful we update `PORT` and start listening.
+ */
+function tryListen(portIndex) {
+    if (portIndex >= PORTS.length) {
+        console.error('Failed to bind to any port in', PORTS);
+        process.exit(1);
+    }
+
+    const attempt = PORTS[portIndex];
+    server.listen(attempt, () => {
+        PORT = attempt;
+        console.log(`Server listening on port ${PORT}`);
+    });
+
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            console.warn(`Port ${attempt} in use, trying next backup port`);
+            tryListen(portIndex + 1);
+        } else {
+            console.error('Server error:', err);
+            process.exit(1);
+        }
+    });
+}
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '.')));
 
 // Configuration
-const PORT = process.env.PORT || 8000;
+// support a list of ports (primary + backups) via env var, e.g. "8000,8001,8002".
+// the server will try each port in order until one is free.
+const parsePorts = (str) => {
+    if (!str) return [8000];
+    return str.split(',').map(p => parseInt(p, 10)).filter(n => !isNaN(n));
+};
+let PORTS = parsePorts(process.env.PORTS || process.env.PORT);
+if (PORTS.length === 0) PORTS = [8000];
+let PORT = PORTS[0];
 const API_VERSION = '1.0.0';
 
 // In-memory data stores

@@ -126,23 +126,26 @@ function togglePause() {
 function startPriceUpdates() {
     if (stockUpdateInterval) clearInterval(stockUpdateInterval);
 
+    // Advance simulated time by 1 day per tick, but run ticks faster when `gameSpeed` > 1
+    const intervalMs = Math.max(1000 / gameSpeed, 50);
     stockUpdateInterval = setInterval(() => {
         if (!isPaused) {
-            simulator.updatePrices(gameSpeed);
+            simulator.updatePrices(1); // move 1 simulated day per tick
             renderStocks();
         }
-    }, 1000);
+    }, intervalMs);
 }
 
 /**
  * Filter stocks by type
  */
-function filterByType(type) {
+function filterByType(type, evt) {
     currentFilter = type;
 
     // Update active button
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
+    const target = (evt && (evt.target || evt.srcElement)) || document.querySelector(`.filter-btn[data-type="${type}"]`);
+    if (target) target.classList.add('active');
 
     renderStocks();
 }

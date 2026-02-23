@@ -37,11 +37,11 @@
 
             <!-- Stock Type Filter -->
             <div class="filter-section">
-                <button class="filter-btn active" onclick="filterByType('all')">All Stocks</button>
-                <button class="filter-btn" onclick="filterByType('growth')">Growth</button>
-                <button class="filter-btn" onclick="filterByType('dividend')">Dividend</button>
-                <button class="filter-btn" onclick="filterByType('etf')">ETFs</button>
-                <button class="filter-btn" onclick="filterByType('bond')">Bonds</button>
+                <button class="filter-btn active" data-type="all" onclick="filterByType('all', event)">All Stocks</button>
+                <button class="filter-btn" data-type="growth" onclick="filterByType('growth', event)">Growth</button>
+                <button class="filter-btn" data-type="dividend" onclick="filterByType('dividend', event)">Dividend</button>
+                <button class="filter-btn" data-type="etf" onclick="filterByType('etf', event)">ETFs</button>
+                <button class="filter-btn" data-type="bond" onclick="filterByType('bond', event)">Bonds</button>
             </div>
 
             <!-- Stocks Grid -->

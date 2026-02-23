@@ -139,8 +139,7 @@
 
     <script>
         function startTest() {
-            // Clear config so it uses defaults if "Options" wasn't clicked
-            sessionStorage.removeItem('gameConfig');
+            // Preserve any saved options (do not clear session storage)
             window.location.href = 'test.html';
         }
 
@@ -150,10 +149,10 @@
 
         function openOptions() {
             window.location.href = 'options.html';
+        }
 
         function openHelp() {
             window.location.href = 'help.html';
-        }
         }
     </script>
 </body>

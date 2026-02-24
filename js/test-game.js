@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
  * Load game configuration from session storage
  */
 function loadConfig() {
+    console.log('[game] loadConfig called');
     const configJSON = sessionStorage.getItem('gameConfig');
     
     if (configJSON) {
@@ -33,18 +34,41 @@ function loadConfig() {
             startingCapital: 25000,
             riskLevel: 'moderate',
             mode: 'classic',
-            difficulty: 'medium'
+            difficulty: 'medium',
+            showDayCounter: false          // new toggleable option
         };
     }
+    // ensure flag exists if loaded config omitted it
+    if (typeof gameConfig.showDayCounter === 'undefined') {
+        gameConfig.showDayCounter = false;
+    }
+    // custom mode overrides
+    if (gameConfig.mode === 'custom') {
+        gameConfig.startingCapital = 10000;
+        // risk/difficulty should not affect; force moderate/medium for simulator
+        gameConfig.riskLevel = 'moderate';
+        gameConfig.difficulty = 'medium';
+        if (!gameConfig.weeks) gameConfig.weeks = 1;
+    }
+    // expose for debugging/automation
+    window.gameConfig = gameConfig;
+    console.log('[game] loaded configuration', gameConfig);
 }
 
 /**
  * Initialize the game with simulator and UI
  */
 function initializeGame() {
+    console.log('[game] initializeGame starting');
     // Initialize simulator with config
-    simulator = initializeSimulator(gameConfig);
+    const sim = initializeSimulator(gameConfig);
+    // attach explicitly to window for environments like jsdom
+    window.simulator = sim;
+    simulator = sim;
 
+    console.log('[game] simulator created', sim);
+    // ensure UI speed buttons reflect current speed
+    setSpeed(gameSpeed);
     // Update mode badge
     const modeName = GAME_MODES[gameConfig.mode]?.name || gameConfig.mode;
     document.getElementById('modeBadge').textContent = `Mode: ${modeName}`;
@@ -70,11 +94,14 @@ function initializeGame() {
  * Setup event listeners
  */
 function setupEventListeners() {
+    console.log('[game] setupEventListeners');
     // Speed button listeners
-    document.getElementById('speed1x').addEventListener('click', () => setSpeed(1));
-    document.getElementById('speed2x').addEventListener('click', () => setSpeed(2));
-    document.getElementById('speed5x').addEventListener('click', () => setSpeed(5));
-    document.getElementById('speed10x').addEventListener('click', () => setSpeed(10));
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+        const speed = parseFloat(btn.getAttribute('data-speed'));
+        if (!isNaN(speed)) {
+            btn.addEventListener('click', () => setSpeed(speed));
+        }
+    });
 }
 
 /**
@@ -83,13 +110,10 @@ function setupEventListeners() {
 function setSpeed(speed) {
     gameSpeed = speed;
 
-    // Update button states
-    ['1x', '2x', '5x', '10x'].forEach(btn => {
-        const element = document.getElementById('speed' + btn);
-        if (element) element.classList.remove('active');
-    });
-
-    const activeBtn = document.getElementById('speed' + speed + 'x');
+    // Update button states (using data-speed attribute)
+    document.querySelectorAll('.speed-btn').forEach(btn => btn.classList.remove('active'));
+    const selector = `.speed-btn[data-speed="${speed}"]`;
+    const activeBtn = document.querySelector(selector);
     if (activeBtn) activeBtn.classList.add('active');
 
     // Adjust update interval
@@ -227,6 +251,9 @@ function selectStock(stock) {
 
     // Update price display
     updatePriceDisplay(stock);
+
+    // Update position info (profit & shares owned)
+    updatePositionInfo(stock);
 
     // Update stock stats
     updateStockStats(stock);
@@ -454,11 +481,31 @@ function sellStock() {
  */
 function showMessage(message, success) {
     const msgElement = document.getElementById('tradeMessage');
-    msgElement.textContent = message;
+    let fullMsg = message;
+    if (success && simulator) {
+        const portfolio = simulator.getPortfolioDetails();
+        fullMsg += ` | Cash: $${portfolio.cash.toFixed(2)}`;
+    }
+    msgElement.textContent = fullMsg;
     msgElement.style.display = 'block';
     msgElement.style.background = success ? '#d1fae5' : '#fee2e2';
     msgElement.style.color = success ? '#065f46' : '#991b1b';
     msgElement.style.border = success ? '1px solid #6ee7b7' : '1px solid #fca5a5';
+}
+
+// display position information for selected stock
+function updatePositionInfo(stock) {
+    const infoEl = document.getElementById('positionInfo');
+    const details = simulator.getPortfolioDetails();
+    const holding = details.holdings.find(h => h.symbol === stock.symbol);
+    if (holding) {
+        const profit = holding.gainLoss;
+        const color = profit >= 0 ? '#10b981' : '#ef4444';
+        infoEl.textContent = `${holding.shares} shares · P/L: $${profit.toFixed(2)}`;
+        infoEl.style.color = color;
+    } else {
+        infoEl.textContent = '';
+    }
 }
 
 /**
@@ -490,6 +537,16 @@ function updateTime() {
     const date = simulator.getSimulatedTime();
     const options = { month: 'short', day: 'numeric', year: 'numeric' };
     document.getElementById('timeDisplay').textContent = date.toLocaleDateString('en-US', options);
+
+    // optional day counter
+    const counterEl = document.getElementById('dayCounter');
+    if (counterEl) {
+        if (gameConfig.showDayCounter && typeof simulator.getDayCount === 'function') {
+            counterEl.textContent = 'Day ' + simulator.getDayCount();
+        } else {
+            counterEl.textContent = '';
+        }
+    }
 }
 
 /**
@@ -621,6 +678,21 @@ function updateModeStats() {
                 <span class="stat-value">${(alloc.bond * 100).toFixed(0)}% / ${(target.bond * 100).toFixed(0)}%</span>
             </div>
         `;
+    } else if (gameConfig.mode === 'custom') {
+        contentDiv.innerHTML = `
+            <div class="stat-line">
+                <span class="stat-label">Weeks Used:</span>
+                <span class="stat-value">${modeStats.weeksUsed}</span>
+            </div>
+            <div class="stat-line">
+                <span class="stat-label">Weeks Remaining:</span>
+                <span class="stat-value">${modeStats.weeksLeft}</span>
+            </div>
+            <div class="stat-line">
+                <span class="stat-label">Total Weeks:</span>
+                <span class="stat-value">${modeStats.totalWeeks}</span>
+            </div>
+        `;
     }
 }
 
@@ -631,6 +703,83 @@ function goHome() {
     if (updateInterval) clearInterval(updateInterval);
     if (stockUpdateInterval) clearInterval(stockUpdateInterval);
     window.location.href = 'index.html';
+}
+
+// Debug panel functionality
+function toggleDebugPanel() {
+    const box = document.getElementById('debugBox');
+    if (box.style.display === 'none') {
+        box.style.display = 'block';
+        refreshDebug();
+    } else {
+        box.style.display = 'none';
+    }
+}
+
+document.getElementById('debugToggle').addEventListener('click', toggleDebugPanel);
+
+function getCurrentState() {
+    return {
+        config: gameConfig,
+        simulator: simulator ? {
+            portfolio: simulator.portfolio,
+            stocks: simulator.stocks,
+            priceHistory: simulator.priceHistory,
+            simulatedTime: simulator.simulatedTime,
+            trades: simulator.trades,
+            modeState: simulator.modeState,
+            startTime: simulator.startTime,
+            initialCapital: simulator.initialCapital
+        } : null
+    };
+}
+
+function refreshDebug() {
+    const output = document.getElementById('debugOutput');
+    output.value = JSON.stringify(getCurrentState(), null, 2);
+}
+
+function exportState() {
+    const state = getCurrentState();
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'stock-sim-state.json';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function promptImport() {
+    const json = prompt('Paste saved state JSON here:');
+    if (json) {
+        try {
+            const obj = JSON.parse(json);
+            loadState(obj);
+        } catch (e) {
+            alert('Invalid JSON');
+        }
+    }
+}
+
+function loadState(state) {
+    if (!state) return;
+    if (state.config) {
+        gameConfig = state.config;
+        window.gameConfig = gameConfig;
+    }
+    if (state.simulator) {
+        const sim = new EnhancedSimulator(gameConfig);
+        Object.assign(sim, state.simulator);
+        sim.simulatedTime = new Date(state.simulator.simulatedTime);
+        simulator = sim;
+        window.simulator = sim;
+    }
+
+    // refresh UI
+    renderStocks();
+    updateDisplay();
+    if (simulator) startPriceUpdates();
 }
 
 // Prevent accidental page close

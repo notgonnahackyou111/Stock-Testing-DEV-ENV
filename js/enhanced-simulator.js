@@ -10,15 +10,21 @@ class EnhancedSimulator {
             riskLevel: config.riskLevel || 'moderate',
             mode: config.mode || 'classic',
             difficulty: config.difficulty || 'medium',
+            // custom-specific
+            weeks: config.weeks || 0,
             ...config
         };
 
-        this.stocks = this.initializeStocks();
+        // prepare storage structures before populating stocks
+        this.priceHistory = {};
         this.portfolio = {
             cash: this.config.startingCapital,
             holdings: {}
         };
-        this.priceHistory = {};
+
+        // stocks may reference priceHistory during initialization
+        this.stocks = this.initializeStocks();
+
         this.startTime = Date.now();
         this.simulatedTime = new Date(2024, 0, 1); // Start date
         this.trades = [];
@@ -27,6 +33,10 @@ class EnhancedSimulator {
         
         // Mode-specific state
         this.modeState = this.initializeModeState();
+        // if custom mode, record start day so we can compute elapsed weeks
+        if (this.config.mode === 'custom') {
+            this.modeState.startDayCount = this.getDayCount();
+        }
     }
 
     initializeModeState() {
@@ -52,6 +62,12 @@ class EnhancedSimulator {
     }
 
     initializeStocks() {
+        // ensure priceHistory object exists (defensive, in case constructor order was wrong)
+        if (!this.priceHistory || typeof this.priceHistory !== 'object') {
+            console.warn('priceHistory missing when initializing stocks, creating new object');
+            this.priceHistory = {};
+        }
+
         const stocks = REAL_STOCKS.map(stock => ({
             ...stock,
             price: stock.basePrice,
@@ -61,6 +77,8 @@ class EnhancedSimulator {
         }));
 
         stocks.forEach(stock => {
+            // guard in case priceHistory was still undefined
+            if (!this.priceHistory) this.priceHistory = {};
             this.priceHistory[stock.symbol] = [stock.price];
         });
 
@@ -71,6 +89,11 @@ class EnhancedSimulator {
      * Update stock prices with random walk affected by risk level
      */
     updatePrices(timeSkipMultiplier = 1) {
+        // if custom mode and weeks are exhausted, do not advance
+        if (this.config.mode === 'custom' && this.weeksRemaining() <= 0) {
+            return;
+        }
+
         this.stocks.forEach(stock => {
             const previousPrice = stock.price;
             
@@ -78,18 +101,28 @@ class EnhancedSimulator {
             const typeVolatility = stock.type === 'bond' ? 0.002 : stock.volatility;
             
             // Random walk with drift
-            const randomChange = (Math.random() - 0.5) * typeVolatility * previousPrice * timeSkipMultiplier;
-            const drift = previousPrice * 0.00008 * timeSkipMultiplier; // slight upward trend
+            // reduce randomness to produce smoother, more market-like curves
+            const randomChange = (Math.random() - 0.5) * typeVolatility * previousPrice * timeSkipMultiplier * 0.5;
+            // gentle overall upward drift
+            const drift = previousPrice * 0.00005 * timeSkipMultiplier;
             
             // Apply momentum (stocks tend to continue in direction)
             let momentum = 0;
             if (this.priceHistory[stock.symbol].length > 1) {
                 const lastChange = this.priceHistory[stock.symbol][this.priceHistory[stock.symbol].length - 1] - 
                                   this.priceHistory[stock.symbol][this.priceHistory[stock.symbol].length - 2];
-                momentum = lastChange * 0.1;
+                // give stronger weight to recent trend to smooth zig-zags
+                momentum = lastChange * 0.3;
+            }
+
+            // Occasional news spike/gap for realism
+            let spike = 1;
+            if (Math.random() < 0.01) {
+                // 1% chance of a gap: +/- up to 10%
+                spike += (Math.random() - 0.5) * 0.2;
             }
             
-            stock.price = Math.max(previousPrice + randomChange + drift + momentum, 0.01);
+            stock.price = Math.max(previousPrice * spike + randomChange + drift + momentum, 0.01);
             this.priceHistory[stock.symbol].push(stock.price);
         });
 
@@ -257,6 +290,35 @@ class EnhancedSimulator {
     }
 
     /**
+     * Get number of simulated days elapsed since the start date (inclusive).
+     */
+    getDayCount() {
+        const start = new Date(2024, 0, 1);
+        const diff = this.simulatedTime - start;
+        return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
+    }
+
+    /**
+     * Return remaining weeks for custom mode
+     */
+    weeksRemaining() {
+        if (this.config.mode !== 'custom') return Infinity;
+        const elapsedDays = this.getDayCount() - this.modeState.startDayCount;
+        const weeksUsed = Math.floor(elapsedDays / 7);
+        return Math.max(this.config.weeks - weeksUsed, 0);
+    }
+
+    /**
+     * Return number of simulated days elapsed since the start date (inclusive).
+     * Day 1 corresponds to 2024‑01‑01. Useful for optional day counter display.
+     */
+    getDayCount() {
+        const start = new Date(2024, 0, 1);
+        const diff = this.simulatedTime - start;
+        return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
+    }
+
+    /**
      * Get mode-specific stats
      */
     getModeStats() {
@@ -277,6 +339,15 @@ class EnhancedSimulator {
             return {
                 currentAllocation: allocation,
                 targetAllocation: this.modeState.targetAllocation
+            };
+        } else if (this.config.mode === 'custom') {
+            const elapsedDays = this.getDayCount() - this.modeState.startDayCount;
+            const weeksUsed = Math.floor(elapsedDays / 7);
+            const weeksLeft = Math.max(this.config.weeks - weeksUsed, 0);
+            return {
+                weeksUsed,
+                weeksLeft,
+                totalWeeks: this.config.weeks
             };
         }
         return {};

@@ -281,6 +281,10 @@
                     <input type="radio" id="daytrader" name="mode" value="daytrader">
                     <label for="daytrader"><strong>Day Trader</strong><br><span style="font-size: 12px; color: #666;">Fast-paced intraday</span></label>
                 </div>
+                <div class="radio-option">
+                    <input type="radio" id="custom" name="mode" value="custom">
+                    <label for="custom"><strong>Custom Challenge</strong><br><span style="font-size: 12px; color: #666;">$10k start; set weeks limit</span></label>
+                </div>
             </div>
         </div>
 
@@ -304,6 +308,28 @@
             </div>
         </div>
 
+        <!-- Miscellaneous -->
+        <div class="option-group">
+            <h2><span class="emoji">📅</span> Display Options</h2>
+            <p class="option-description">Toggle extra information in the game UI</p>
+            <div class="input-wrapper">
+                <label><input type="checkbox" id="showDayCounter"> Show game day counter</label>
+            </div>
+        </div>
+
+        <!-- Custom challenge weeks -->
+        <div class="option-group" id="customWeeksGroup" style="display:none;">
+            <h2><span class="emoji">⏱️</span> Custom Weeks</h2>
+            <p class="option-description">How many weeks do you have to grow $10,000?</p>
+            <div class="input-wrapper">
+                <label>Weeks:</label>
+                <input type="number" id="weekLimit" min="1" max="52" step="1" value="1">
+            </div>
+            <div class="info-box">
+                🎯 You start with $10,000; all other options are ignored when this mode is selected.
+            </div>
+        </div>
+
         <!-- Summary -->
         <div class="summary-box">
             <h3>Your Configuration</h3>
@@ -323,6 +349,14 @@
                 <span>Difficulty:</span>
                 <strong><span id="summaryDifficulty">Medium</span></strong>
             </div>
+            <div class="summary-item">
+                <span>Day Counter:</span>
+                <strong><span id="summaryDayCounter">off</span></strong>
+            </div>
+            <div class="summary-item" id="summaryWeekLimitRow" style="display:none;">
+                <span>Week Limit:</span>
+                <strong><span id="summaryWeekLimit">0</span></strong>
+            </div>
         </div>
 
         <!-- Action Buttons -->
@@ -339,26 +373,81 @@
             const risk = document.querySelector('input[name="riskLevel"]:checked').id;
             const mode = document.querySelector('input[name="mode"]:checked').id;
             const difficulty = document.querySelector('input[name="difficulty"]:checked').id;
+            const dayCounterOn = document.getElementById('showDayCounter').checked;
+            const weekLimit = document.getElementById('weekLimit').value;
 
-            document.getElementById('summaryCapital').textContent = parseInt(capital).toLocaleString();
+            // custom mode always starts with 10k
+            const capped = Math.min(parseInt(capital), 1000000);
+            const displayCapital = mode === 'custom' ? 10000 : capped;
+            document.getElementById('summaryCapital').textContent = displayCapital.toLocaleString();
             document.getElementById('summaryRisk').textContent = risk.charAt(0).toUpperCase() + risk.slice(1);
             document.getElementById('summaryMode').textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
             document.getElementById('summaryDifficulty').textContent = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+            document.getElementById('summaryDayCounter').textContent = dayCounterOn ? 'on' : 'off';
+            const weekRow = document.getElementById('summaryWeekLimitRow');
+            if (mode === 'custom') {
+                weekRow.style.display = 'flex';
+                document.getElementById('summaryWeekLimit').textContent = weekLimit || '0';
+            } else {
+                weekRow.style.display = 'none';
+            }
         }
 
         // Listen for changes
         document.querySelectorAll('input').forEach(input => {
-            input.addEventListener('change', updateSummary);
+            input.addEventListener('change', () => {
+                updateSummary();
+                refreshOptionVisibility();
+            });
         });
 
-        function startTest() {
-            const config = {
-                startingCapital: parseInt(document.getElementById('startingCapital').value),
-                riskLevel: document.querySelector('input[name="riskLevel"]:checked').value,
-                mode: document.querySelector('input[name="mode"]:checked').value,
-                difficulty: document.querySelector('input[name="difficulty"]:checked').value
-            };
+        function refreshOptionVisibility() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const customGroup = document.getElementById('customWeeksGroup');
+            if (mode === 'custom') {
+                customGroup.style.display = 'block';
+                // disable irrelevant fields
+                document.getElementById('startingCapital').disabled = true;
+                document.querySelectorAll('input[name="riskLevel"]').forEach(i => i.disabled = true);
+                document.querySelectorAll('input[name="difficulty"]').forEach(i => i.disabled = true);
+            } else {
+                customGroup.style.display = 'none';
+                document.getElementById('startingCapital').disabled = false;
+                document.querySelectorAll('input[name="riskLevel"]').forEach(i => i.disabled = false);
+                document.querySelectorAll('input[name="difficulty"]').forEach(i => i.disabled = false);
+            }
+        }
 
+        function loadOptions() {
+            const cfg = JSON.parse(sessionStorage.getItem('gameConfig') || '{}');
+            if (cfg.startingCapital) document.getElementById('startingCapital').value = cfg.startingCapital;
+            if (cfg.riskLevel) document.querySelector(`input[name="riskLevel"][value="${cfg.riskLevel}"]`).checked = true;
+            if (cfg.mode) document.querySelector(`input[name="mode"][value="${cfg.mode}"]`).checked = true;
+            if (cfg.difficulty) document.querySelector(`input[name="difficulty"][value="${cfg.difficulty}"]`).checked = true;
+            if (cfg.showDayCounter) document.getElementById('showDayCounter').checked = true;
+            if (cfg.weeks) document.getElementById('weekLimit').value = cfg.weeks;
+            updateSummary();
+            refreshOptionVisibility();
+        }
+
+        loadOptions();
+
+        function startTest() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            let startCap = parseInt(document.getElementById('startingCapital').value);
+            startCap = Math.min(startCap, 1000000);
+            const config = {
+                startingCapital: startCap,
+                riskLevel: document.querySelector('input[name="riskLevel"]:checked').value,
+                mode: mode,
+                difficulty: document.querySelector('input[name="difficulty"]:checked').value,
+                showDayCounter: document.getElementById('showDayCounter').checked
+            };
+            if (mode === 'custom') {
+                config.startingCapital = 10000;
+                config.weeks = parseInt(document.getElementById('weekLimit').value) || 1;
+                // ignore other values
+            }
             // Save to session storage
             sessionStorage.setItem('gameConfig', JSON.stringify(config));
             

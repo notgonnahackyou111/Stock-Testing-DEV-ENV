@@ -5,12 +5,13 @@
 
 class StockSimulator {
     constructor() {
+        // init before stocks since initializeStocks writes into priceHistory
+        this.priceHistory = {};
         this.stocks = this.initializeStocks();
         this.portfolio = {
             cash: 10000,
             holdings: {}
         };
-        this.priceHistory = {};
         this.startTime = Date.now();
         this.trades = [];
     }

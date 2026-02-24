@@ -18,6 +18,10 @@ A comprehensive, professional-grade stock market simulation platform for safely 
 - **Stock Analytics** - 52-week range, market cap, trading volume, stock type classification
 - **Portfolio Tracking** - Real-time P&L, holdings breakdown, cost basis analysis
 - **Multiple Game Modes** - Portfolio Building, Day Trader, Challenge Mode, Classic Trading
+- **Optional Day Counter** - track the number of simulated days; toggleable via options
+- **Starting Capital Cap** - maximum $1,000,000 (slider enforces this)
+- **Custom Challenge Mode** - start with $10,000 and set your own week limit (other settings are ignored)
+- **Debug Panel & Save/Load** - toggleable in the trading screen; export your session to JSON or import a previous one
 - **Difficulty Levels** - Easy, Medium, Hard with adjustable volatility and starting capital
 - **Risk Levels** - Conservative (0.5x), Moderate (1.0x), Aggressive (1.8x)
 - **Time Acceleration** - 1x-10x speed simulation, pause/resume controls
@@ -57,7 +61,19 @@ A comprehensive, professional-grade stock market simulation platform for safely 
 
 ---
 
-## 🚀 Quick Start
+## � Debug Panel & State Import/Export
+
+While playing a session you can press the 🐞 button (top‑right of the speed controls) to open an **advanced debugger**. The panel shows your entire simulator state in JSON and provides buttons to:
+
+* **Refresh** – update the displayed state
+* **Export** – download the current state as a `.json` file
+* **Import** – paste previously saved JSON to restore that game session
+
+The imported state will recreate the simulator (including portfolio, trades, time, etc.) so you can pause and resume at will or share scenarios with others.
+
+Optionally use the prompt importer or paste the contents of a saved file.
+
+## �🚀 Quick Start
 
 ### For Users (Frontend Only - No Installation Required)
 ```bash
@@ -120,6 +136,55 @@ Once the process manager is installed and configured, you can power the
 machine on/off freely — the service will come up automatically and will
 be restarted if it crashes, keeping the simulation accessible 24/7.
 
+### Deploying to a remote host
+Because the application is just a Node.js server + static files, it can
+be hosted on any machine you have SSH access to (a VPS, cloud VM, home
+server, etc.).  The only requirement is that the host can run Node.js or
+Docker and that a port (default 8000) is open to the network.
+
+#### Example (Node.js/PM2)
+1. SSH into your remote machine.
+2. Install Node.js 18+ and Git.
+3. Clone the repository and install dependencies:
+   ```bash
+   git clone https://github.com/notgonnahackyou111/Stock-Testing-DEV-ENV.git
+   cd Stock-Testing-DEV-ENV
+   npm install --production
+   ```
+4. Start the server with environment variables if desired:
+   ```bash
+   export PORTS=8000,8001,8002   # try 8000 then backups
+   npm start                    # or pm2 start ecosystem.config.js
+   ```
+5. Use PM2/systemd/Docker to keep the process alive.  Point your browser to
+   `http://<your-machine-ip>:8000` (or the port reported by the startup
+   log).
+
+#### Example (Docker)
+A `Dockerfile` is provided for convenience; build and run it on the host:
+
+```bash
+# build the image on the remote machine
+docker build -t stock-simulator:latest .
+
+# run it in detached mode, mapping host port 8000
+docker run -d --restart=always -p 8000:8000 \
+  -e PORTS=8000,8001,8002 --name stock-sim stock-simulator:latest
+```
+
+The container will expose port 8000 inside and restart automatically on
+failure or reboot.  You can also deploy the image to any Docker-capable
+platform (AWS ECS, Azure Container Instances, etc.).
+
+#### Networking and domain names
+- To access the service from outside your LAN, open/forward the port on
+  the host's firewall/router.
+- Assign a static IP or a DNS name and point it to the host.
+- For HTTPS, put a reverse proxy (nginx, Caddy, Traefik) in front of the
+  Node app or let your cloud provider handle TLS.
+
+With these steps in place you’ll have a remote instance running around the
+clock; the URL will be `http://<host>:<port>` (or your custom domain).
 
 ---
 
@@ -222,6 +287,20 @@ Create a diversified portfolio with target allocations:
 Rebalance as prices move to maintain targets.
 
 ### ⚡ Day Trader
+
+### ⏳ Day Counter (New)
+
+A simple counter showing the number of simulated game days that have elapsed. This feature is **disabled by default**; enable it from the options screen if you prefer a numerical day indicator alongside the date display.
+
+### 🎯 Custom Challenge Mode
+
+This mode gives you a clean start for time‑bound profit runs:
+
+- Begin with exactly $10,000 (overrides starting capital field).
+- Specify how many **weeks** you have to trade; the simulation will stop when the limit is reached.
+- All other settings (risk, difficulty, etc.) are ignored while the mode is active.
+- Monitor weeks used/remaining via the mode stats panel during play.
+
 Fast-paced mode with realistic Pattern Day Trader rules:
 - Limited to 3 trades per day
 - Maximize daily profits
@@ -499,6 +578,7 @@ Customize in `options.html`:
 - Starting Capital: $5,000 - $500,000+
 - Risk Level: Conservative, Moderate, Aggressive
 - Game Mode: Portfolio, Day Trader, Challenge, Classic
+- Optional day counter display (turn on/off in Options)
 - Difficulty: Easy, Medium, Hard
 
 ---

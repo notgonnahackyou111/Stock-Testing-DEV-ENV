@@ -25,13 +25,17 @@
                 <div class="time-display">
                     <span class="label">Simulated Time:</span>
                     <span id="timeDisplay">Jan 1, 2024</span>
+                    <span id="dayCounter" style="margin-left:15px; font-weight:bold;"></span>
                 </div>
                 <div class="speed-controls">
-                    <button onclick="setSpeed(1)" class="speed-btn" id="speed1x">1x</button>
-                    <button onclick="setSpeed(2)" class="speed-btn" id="speed2x">2x</button>
-                    <button onclick="setSpeed(5)" class="speed-btn" id="speed5x">5x</button>
-                    <button onclick="setSpeed(10)" class="speed-btn" id="speed10x">10x</button>
+                    <button class="speed-btn" data-speed="0.15">0.15x</button>
+                    <button class="speed-btn" data-speed="0.25">0.25x</button>
+                    <button class="speed-btn" data-speed="1">1x</button>
+                    <button class="speed-btn" data-speed="2">2x</button>
+                    <button class="speed-btn" data-speed="5">5x</button>
+                    <button class="speed-btn" data-speed="10">10x</button>
                     <button id="pauseBtn" onclick="togglePause()" class="speed-btn pause">⏸ Pause</button>
+                    <button id="debugToggle" class="speed-btn" style="margin-left:10px; font-size:14px;">🐞 Debug</button>
                 </div>
             </div>
 
@@ -53,6 +57,7 @@
                     <div class="header-info">
                         <h3 id="selectedStock">Select a stock to trade</h3>
                         <div id="stockMeta"></div>
+                        <div id="positionInfo" style="font-size:14px; color:#555; margin-top:4px;"></div>
                     </div>
                     <div class="price-display">
                         <div class="current-price" id="currentPrice">$0.00</div>
@@ -129,6 +134,17 @@
                     <div style="color: #999; text-align: center; padding: 15px;">No trades yet</div>
                 </div>
             </div>
+
+            <!-- Debug Panel -->
+            <div class="info-box debug-box" id="debugBox" style="display:none;">
+                <h3>🐞 Debug Panel</h3>
+                <textarea id="debugOutput" rows="8" style="width:100%; font-size:12px;"></textarea>
+                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                    <button onclick="refreshDebug()" class="btn-options" style="padding:5px 10px; font-size:12px;">Refresh</button>
+                    <button onclick="exportState()" class="btn-start" style="padding:5px 10px; font-size:12px;">Export</button>
+                    <button onclick="promptImport()" class="btn-bot" style="padding:5px 10px; font-size:12px;">Import</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -136,8 +152,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     
     <!-- Scripts -->
-    <script src="js/stocks-data.js"></script>
-    <script src="js/enhanced-simulator.js"></script>
-    <script src="js/test-game.js"></script>
+    <script src="js/stocks-data.js?v=2"></script>
+    <script src="js/enhanced-simulator.js?v=2"></script>
+    <script src="js/test-game.js?v=2"></script>
 </body>
 </html>

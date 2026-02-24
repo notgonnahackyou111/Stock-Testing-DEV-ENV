@@ -161,7 +161,8 @@ const GAME_MODES = {
     classic: { name: 'Classic Trading', description: 'Standard trading with real stocks' },
     challenge: { name: 'Challenge Mode', description: 'Meet daily targets to advance' },
     portfolio: { name: 'Portfolio Builder', description: 'Build a balanced portfolio' },
-    daytrader: { name: 'Day Trader', description: 'Fast-paced intraday trading' }
+    daytrader: { name: 'Day Trader', description: 'Fast-paced intraday trading' },
+    custom: { name: 'Custom Challenge', description: 'Start with $10k and set a week limit' }
 };
 
 const DIFFICULTIES = {

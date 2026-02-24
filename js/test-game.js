@@ -585,9 +585,10 @@ function updateHoldings() {
                 <span class="holding-symbol">${h.symbol}</span>
                 <div class="holding-details">
                     ${h.shares} shares @ $${h.price.toFixed(2)}<br>
+                    <span style="font-size: 12px; color: #666;">Invested: $${h.totalInvestment.toFixed(2)}</span><br>
                     Value: $${h.value.toFixed(2)}<br>
-                    <span style="color: ${h.gainLoss >= 0 ? '#10b981' : '#ef4444'}">
-                        ${h.gainLoss >= 0 ? '+' : ''}$${h.gainLoss.toFixed(2)}
+                    <span style="color: ${h.gainLoss >= 0 ? '#10b981' : '#ef4444'}; font-weight: 500;">
+                        ${h.gainLoss >= 0 ? '↑ +' : '↓ '}$${h.gainLoss.toFixed(2)}
                     </span>
                 </div>
             </div>

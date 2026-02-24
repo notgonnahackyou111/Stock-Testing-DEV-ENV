@@ -244,15 +244,21 @@ class EnhancedSimulator {
                     }
                 });
 
+                const avgCostPerShare = costBasis / sharesOwned || stock.price;
+                const totalInvestment = costBasis;
+                const currentValue = stock.price * shares;
+                const gainLoss = currentValue - totalInvestment;
+
                 details.holdings.push({
                     symbol,
                     name: stock.name,
                     type: stock.type,
                     shares,
                     price: stock.price,
-                    value: stock.price * shares,
-                    costBasis: costBasis / sharesOwned || stock.price,
-                    gainLoss: (stock.price - (costBasis / sharesOwned || stock.price)) * shares
+                    value: currentValue,
+                    costBasis: avgCostPerShare,
+                    totalInvestment: totalInvestment,
+                    gainLoss: gainLoss
                 });
             }
         }

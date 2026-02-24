@@ -200,10 +200,10 @@
         </div>
     </main>
 
-    <!-- ChatGPT widget -->
+    <!-- Grok widget -->
     <div id="chatbox" class="chatbox" style="display:none; position:fixed; bottom:20px; right:20px; width:300px; height:400px; background:white; box-shadow:0 0 10px rgba(0,0,0,0.3); z-index:30; border-radius:8px; display:flex; flex-direction:column;">
         <div style="padding:8px; background:#667eea; color:white; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
-            ChatGPT <button id="closeChat" style="background:none;border:none;color:white;font-size:16px;cursor:pointer;">&times;</button>
+            Grok <button id="closeChat" style="background:none;border:none;color:white;font-size:16px;cursor:pointer;">&times;</button>
         </div>
         <div id="chatMessages" style="overflow-y:auto; flex:1;padding:10px; font-size:14px;"></div>
         <div style="display:flex; border-top:1px solid #eee;">
@@ -211,7 +211,7 @@
             <button id="sendChat" style="padding:5px 10px; border:none; background:#667eea; color:white; cursor:pointer;">Send</button>
         </div>
     </div>
-    <button id="chatToggle" style="position:fixed; bottom:20px; right:340px; z-index:30; padding:10px 15px; background:#667eea; color:white; border:none; border-radius:5px; cursor:pointer;">ChatGPT</button>
+    <button id="chatToggle" style="position:fixed; bottom:20px; right:340px; z-index:30; padding:10px 15px; background:#667eea; color:white; border:none; border-radius:5px; cursor:pointer;">Grok</button>
 
     <script>
         // navigation functions
@@ -236,14 +236,14 @@
         const chatInput = document.getElementById('chatInput');
         const chatMessages = document.getElementById('chatMessages');
 
-        let openaiKey = sessionStorage.getItem('openai_key') || null;
+        let grokKey = sessionStorage.getItem('grok_key') || null;
 
         chatToggle.addEventListener('click', () => {
-            if (!openaiKey) {
-                openaiKey = prompt('Enter your OpenAI API key:');
-                if (openaiKey) {
-                    openaiKey = openaiKey.trim();
-                    sessionStorage.setItem('openai_key', openaiKey);
+            if (!grokKey) {
+                grokKey = prompt('Enter your Grok API key:');
+                if (grokKey) {
+                    grokKey = grokKey.trim();
+                    sessionStorage.setItem('grok_key', grokKey);
                 }
             }
             chatbox.style.display = 'block';
@@ -258,24 +258,24 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        async function queryOpenAI(prompt) {
-            if (!openaiKey) return appendMessage('System','API key missing');
+        async function queryGrok(prompt) {
+            if (!grokKey) return appendMessage('System','API key missing');
             try {
-                const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+                const resp = await fetch('https://api.x.ai/v1/chat/completions', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        Authorization: 'Bearer ' + openaiKey
+                        Authorization: 'Bearer ' + grokKey
                     },
                     body: JSON.stringify({
-                        model: 'gpt-4o-mini',
+                        model: 'grok-2',
                         messages: [{ role: 'user', content: prompt }]
                     })
                 });
                 if (!resp.ok) {
                     const errText = await resp.text();
                     appendMessage('System', `HTTP ${resp.status}: ${errText}`);
-                    console.error('OpenAI error', resp.status, errText);
+                    console.error('Grok error', resp.status, errText);
                     return null;
                 }
                 const data = await resp.json();
@@ -291,8 +291,8 @@
             if (!text) return;
             appendMessage('You', text);
             chatInput.value = '';
-            const reply = await queryOpenAI(text);
-            if (reply) appendMessage('GPT', reply);
+            const reply = await queryGrok(text);
+            if (reply) appendMessage('Grok', reply);
         });
     </script>
 </body>

@@ -162,6 +162,15 @@
             background: #dc2626;
         }
 
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
         .bot-card {
             background: #f9fafb;
             border: 2px solid #e5e7eb;
@@ -771,7 +780,10 @@ simulator.close_position('AAPL', 10)</code>
                         </div>
                     </div>
                     <p style="color: #666; font-size: 13px; margin-bottom: 15px;">${bot.description}</p>
-                    <button class="btn btn-danger" onclick="disconnectBot('${bot.botId}')">Disconnect</button>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-success" onclick="openTrainingDashboard('${bot.botId}', '${bot.name}')">🤖 Training</button>
+                        <button class="btn btn-danger" onclick="disconnectBot('${bot.botId}')">Disconnect</button>
+                    </div>
                 </div>
             `).join('');
         }
@@ -783,6 +795,11 @@ simulator.close_position('AAPL', 10)</code>
                 refreshActiveBots();
                 showAlert('Bot disconnected', 'success');
             }
+        }
+
+        function openTrainingDashboard(botId, botName) {
+            const url = `bot-training-dashboard.html?bot_id=${botId}&bot_name=${encodeURIComponent(botName)}`;
+            window.location.href = url;
         }
 
         function showAlert(message, type) {

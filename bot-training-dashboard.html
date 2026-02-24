@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Training Dashboard - Stock Testing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 28px;
+        }
+
+        .header button {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid white;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .header button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .training-controls {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .training-controls button {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .btn-start {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-start:hover {
+            background: #059669;
+        }
+
+        .btn-stop {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-stop:hover {
+            background: #dc2626;
+        }
+
+        .btn-reset {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-reset:hover {
+            background: #d97706;
+        }
+
+        .training-status {
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .status-running {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-stopped {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-idle {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-title {
+            font-size: 14px;
+            color: #999;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #333;
+            font-family: 'Courier New', monospace;
+        }
+
+        .stat-change {
+            font-size: 14px;
+            margin-top: 10px;
+            font-weight: 500;
+        }
+
+        .stat-change.positive {
+            color: #10b981;
+        }
+
+        .stat-change.negative {
+            color: #ef4444;
+        }
+
+        .holdings-section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .holdings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .holding-item {
+            background: #f9fafb;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .holding-symbol {
+            font-size: 16px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .holding-info {
+            font-size: 13px;
+            color: #666;
+            margin-top: 8px;
+            line-height: 1.6;
+        }
+
+        .trades-section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .trades-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .trade-item {
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            font-size: 13px;
+        }
+
+        .trade-item.buy {
+            border-left-color: #10b981;
+        }
+
+        .trade-item.sell {
+            border-left-color: #ef4444;
+        }
+
+        .trade-type {
+            font-weight: 700;
+            margin-right: 10px;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.info {
+            background: #dbeafe;
+            color: #1e40af;
+            border-left: 4px solid #3b82f6;
+            display: block;
+        }
+
+        .alert.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid #ef4444;
+            display: block;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .mini-stat {
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .mini-stat .label {
+            font-size: 12px;
+            color: #999;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .mini-stat .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Bot Training Dashboard</h1>
+        <button onclick="goBack()">← Back to Bots</button>
+    </div>
+
+    <div class="container">
+        <div class="alert" id="alert"></div>
+
+        <div class="training-controls">
+            <div>
+                <strong style="font-size: 16px;" id="botNameDisplay">Loading...</strong>
+                <div style="font-size: 12px; color: #666; margin-top: 4px;" id="botIdDisplay"></div>
+            </div>
+
+            <div style="flex: 1;"></div>
+
+            <button class="btn-start" id="startBtn" onclick="startTraining()">▶ Start Training</button>
+            <button class="btn-stop" id="stopBtn" onclick="stopTraining()" style="display: none;">⏹ Stop Training</button>
+            <button class="btn-reset" onclick="resetTraining()">↻ Reset</button>
+
+            <div class="training-status" id="trainingStatus">
+                Status: <span id="statusText">Idle</span>
+            </div>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-title">Total Value</div>
+                <div class="stat-value" id="totalValue">$100,000.00</div>
+                <div class="stat-change" id="totalChange">+$0.00</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-title">Profit/Loss</div>
+                <div class="stat-value" id="profitLoss">$0.00</div>
+                <div class="stat-change" id="profitPercent">0.00%</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-title">Cash Available</div>
+                <div class="stat-value" id="cash">$100,000.00</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-title">Holdings Value</div>
+                <div class="stat-value" id="holdingsValue">$0.00</div>
+            </div>
+        </div>
+
+        <div class="stats-row">
+            <div class="mini-stat">
+                <div class="label">Total Trades</div>
+                <div class="value" id="totalTrades">0</div>
+            </div>
+
+            <div class="mini-stat">
+                <div class="label">Successful Trades</div>
+                <div class="value" id="successfulTrades">0</div>
+            </div>
+
+            <div class="mini-stat">
+                <div class="label">Failed Trades</div>
+                <div class="value" id="failedTrades">0</div>
+            </div>
+
+            <div class="mini-stat">
+                <div class="label">Win Rate</div>
+                <div class="value" id="winRate">0%</div>
+            </div>
+        </div>
+
+        <div class="holdings-section">
+            <div class="section-title">Current Holdings</div>
+            <div class="holdings-grid" id="holdingsList">
+                <div style="color: #999; padding: 20px; text-align: center;">No holdings yet</div>
+            </div>
+        </div>
+
+        <div class="trades-section">
+            <div class="section-title">Trading Activity</div>
+            <div class="trades-list" id="tradesList">
+                <div style="color: #999; padding: 20px; text-align: center;">Waiting for trades...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let botId = null;
+        let botName = null;
+        let isTraining = false;
+        let updateInterval = null;
+        let ws = null;
+
+        // Get bot ID from URL params
+        const params = new URLSearchParams(window.location.search);
+        botId = params.get('bot_id');
+        botName = params.get('bot_name') || 'Unknown Bot';
+
+        const BACKEND_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:8000'
+            : 'https://stock-testing-bots.onrender.com';
+
+        console.log(`[Dashboard] Bot ID: ${botId}, Backend: ${BACKEND_URL}`);
+
+        function init() {
+            document.getElementById('botNameDisplay').textContent = `🤖 ${botName}`;
+            document.getElementById('botIdDisplay').textContent = `ID: ${botId}`;
+            
+            // Try to connect WebSocket
+            connectWebSocket();
+            
+            // Initial update
+            updateDashboard();
+        }
+
+        function connectWebSocket() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsURL = `${wsProtocol}//${BACKEND_URL.split('://')[1]}`;
+            
+            try {
+                ws = new WebSocket(wsURL);
+                ws.onopen = () => {
+                    console.log('[WebSocket] Connected');
+                    ws.send(JSON.stringify({ type: 'subscribe', bot_id: botId }));
+                };
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.bot_id === botId) {
+                        updateDashboard();
+                    }
+                };
+                ws.onerror = (err) => console.error('[WebSocket] Error:', err);
+            } catch (e) {
+                console.log('[WebSocket] Not available, using polling');
+            }
+        }
+
+        function startTraining() {
+            isTraining = true;
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'block';
+            document.getElementById('statusText').textContent = 'Running';
+            document.getElementById('trainingStatus').className = 'training-status status-running';
+
+            showAlert('Training started! Bot is now running simulations.', 'info');
+
+            // Send start signal to backend
+            fetch(`${BACKEND_URL}/api/bot/${botId}/training/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bot_id: botId })
+            }).catch(e => console.error('Start training error:', e));
+
+            // Update every second while training
+            updateInterval = setInterval(updateDashboard, 1000);
+        }
+
+        function stopTraining() {
+            isTraining = false;
+            document.getElementById('startBtn').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('statusText').textContent = 'Stopped';
+            document.getElementById('trainingStatus').className = 'training-status status-stopped';
+
+            clearInterval(updateInterval);
+
+            showAlert('Training stopped.', 'info');
+
+            fetch(`${BACKEND_URL}/api/bot/${botId}/training/stop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }).catch(e => console.error('Stop training error:', e));
+        }
+
+        function resetTraining() {
+            if (isTraining) {
+                showAlert('Stop training before resetting.', 'error');
+                return;
+            }
+
+            fetch(`${BACKEND_URL}/api/bot/${botId}/training/reset`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            }).then(() => {
+                updateDashboard();
+                showAlert('Training session reset.', 'info');
+            }).catch(e => console.error('Reset error:', e));
+        }
+
+        async function updateDashboard() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/bot/${botId}/training/stats`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const data = await response.json();
+                
+                // Update portfolio stats
+                document.getElementById('totalValue').textContent = `$${data.totalValue.toFixed(2)}`;
+                document.getElementById('cash').textContent = `$${data.cash.toFixed(2)}`;
+                document.getElementById('holdingsValue').textContent = `$${data.holdingsValue.toFixed(2)}`;
+                
+                // Update P&L
+                const gainLoss = data.totalValue - 100000;
+                const gainPercent = (gainLoss / 100000) * 100;
+                document.getElementById('profitLoss').textContent = `$${gainLoss.toFixed(2)}`;
+                document.getElementById('profitPercent').textContent = `${gainPercent >= 0 ? '+' : ''}${gainPercent.toFixed(2)}%`;
+                
+                const plElement = document.getElementById('profitLoss');
+                plElement.style.color = gainLoss >= 0 ? '#10b981' : '#ef4444';
+
+                // Update trade stats
+                document.getElementById('totalTrades').textContent = data.totalTrades || 0;
+                document.getElementById('successfulTrades').textContent = data.successfulTrades || 0;
+                document.getElementById('failedTrades').textContent = data.failedTrades || 0;
+                const winRate = data.totalTrades > 0 ? ((data.successfulTrades / data.totalTrades) * 100).toFixed(1) : 0;
+                document.getElementById('winRate').textContent = `${winRate}%`;
+
+                // Update holdings
+                if (data.holdings && data.holdings.length > 0) {
+                    document.getElementById('holdingsList').innerHTML = data.holdings.map(h => `
+                        <div class="holding-item">
+                            <div class="holding-symbol">${h.symbol}</div>
+                            <div class="holding-info">
+                                <div>${h.quantity} shares @ $${h.price.toFixed(2)}</div>
+                                <div style="color: ${h.gainLoss >= 0 ? '#10b981' : '#ef4444'}; font-weight: 600;">
+                                    ${h.gainLoss >= 0 ? '+' : ''}$${h.gainLoss.toFixed(2)}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('holdingsList').innerHTML = '<div style="color: #999; padding: 20px; text-align: center;">No holdings</div>';
+                }
+
+                // Update trades
+                if (data.recentTrades && data.recentTrades.length > 0) {
+                    document.getElementById('tradesList').innerHTML = data.recentTrades.reverse().slice(0, 20).map(t => `
+                        <div class="trade-item ${t.action.toLowerCase()}">
+                            <span class="trade-type">${t.action}</span>
+                            ${t.quantity} ${t.symbol} @ $${t.price.toFixed(2)} - $${(t.quantity * t.price).toFixed(2)}
+                            <div style="font-size: 11px; color: #999; margin-top: 4px;">${new Date(t.timestamp).toLocaleTimeString()}</div>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error('Dashboard update error:', e);
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertEl = document.getElementById('alert');
+            alertEl.textContent = message;
+            alertEl.className = `alert ${type}`;
+        }
+
+        function goBack() {
+            window.location.href = 'bot-connection.html';
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

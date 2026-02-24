@@ -559,11 +559,237 @@ server.listen(PORT, () => {
     ✓ GET    /api/portfolio
     ✓ GET    /api/bot/:botId/stats
     ✓ GET    /api/bot/:botId/orders
+    ✓ POST   /api/bot/:botId/training/start
+    ✓ POST   /api/bot/:botId/training/stop
+    ✓ POST   /api/bot/:botId/training/reset
+    ✓ GET    /api/bot/:botId/training/stats
     ✓ WS     (WebSocket for real-time updates)
     `);
 
     initializeMarketData();
 });
+
+// Bot Training Simulation Endpoints
+const trainingSessions = new Map();
+
+app.post('/api/bot/:botId/training/start', (req, res) => {
+    const { botId } = req.params;
+    const bot = bots.get(botId);
+    
+    if (!bot) {
+        return res.status(404).json({ error: 'Bot not found' });
+    }
+
+    // Create training session if it doesn't exist
+    if (!trainingSessions.has(botId)) {
+        trainingSessions.set(botId, {
+            isRunning: true,
+            startTime: Date.now(),
+            trades: [],
+            successfulTrades: 0,
+            failedTrades: 0
+        });
+    }
+
+    const session = trainingSessions.get(botId);
+    session.isRunning = true;
+    session.lastStartTime = Date.now();
+
+    res.json({
+        success: true,
+        message: 'Training started',
+        session: session
+    });
+
+    // Simulate trading activity every 1-3 seconds
+    simulateBotTrading(botId);
+});
+
+app.post('/api/bot/:botId/training/stop', (req, res) => {
+    const { botId } = req.params;
+    const session = trainingSessions.get(botId);
+
+    if (session) {
+        session.isRunning = false;
+    }
+
+    res.json({
+        success: true,
+        message: 'Training stopped'
+    });
+});
+
+app.post('/api/bot/:botId/training/reset', (req, res) => {
+    const { botId } = req.params;
+    
+    // Reset portfolio
+    portfolios.set(botId, {
+        cash: 100000,
+        holdings: new Map(),
+        totalValue: 100000,
+        realizedGains: 0,
+        unrealizedGains: 0
+    });
+
+    // Reset session
+    trainingSessions.delete(botId);
+
+    res.json({
+        success: true,
+        message: 'Training session reset'
+    });
+});
+
+app.get('/api/bot/:botId/training/stats', (req, res) => {
+    const { botId } = req.params;
+    const portfolio = portfolios.get(botId);
+    const session = trainingSessions.get(botId);
+
+    if (!portfolio) {
+        return res.status(404).json({ error: 'Portfolio not found' });
+    }
+
+    // Calculate portfolio value
+    let totalValue = portfolio.cash;
+    let holdingsValue = 0;
+    const holdings = [];
+
+    portfolio.holdings.forEach((holding) => {
+        const market = marketData.get(holding.symbol);
+        const currentPrice = market ? market.price : 0;
+        const currentValue = currentPrice * holding.quantity;
+        holdingsValue += currentValue;
+        totalValue += currentValue;
+
+        holdings.push({
+            symbol: holding.symbol,
+            quantity: holding.quantity,
+            price: currentPrice,
+            value: currentValue,
+            gainLoss: currentValue - holding.costBasis
+        });
+    });
+
+    // Get recent trades
+    const botTrades = Array.from(orders.values())
+        .filter(o => o.bot_id === botId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const stats = {
+        botId: botId,
+        cash: portfolio.cash,
+        totalValue: totalValue,
+        holdingsValue: holdingsValue,
+        holdings: holdings,
+        recentTrades: botTrades.slice(0, 50).map(t => ({
+            action: t.action.toUpperCase(),
+            symbol: t.symbol,
+            quantity: t.quantity,
+            price: t.price,
+            timestamp: t.createdAt,
+            status: t.status
+        })),
+        totalTrades: botTrades.length,
+        successfulTrades: botTrades.filter(t => t.status === 'filled').length,
+        failedTrades: botTrades.filter(t => t.status === 'rejected').length,
+        isTraining: session ? session.isRunning : false
+    };
+
+    res.json(stats);
+});
+
+function simulateBotTrading(botId) {
+    const session = trainingSessions.get(botId);
+    if (!session || !session.isRunning) return;
+
+    // Get random stock from market and make a trade decision
+    const randomInterval = setInterval(async () => {
+        if (!session || !session.isRunning) {
+            clearInterval(randomInterval);
+            return;
+        }
+
+        try {
+            const allMarkets = Array.from(marketData.values());
+            const randomStock = allMarkets[Math.floor(Math.random() * allMarkets.length)];
+            const portfolio = portfolios.get(botId);
+            const shouldBuy = Math.random() > 0.5;
+
+            if (shouldBuy) {
+                // Try to buy
+                const quantity = Math.floor(Math.random() * 10) + 1;
+                const cost = randomStock.price * quantity;
+
+                if (portfolio.cash >= cost) {
+                    // Execute buy
+                    portfolio.cash -= cost;
+                    const holding = portfolio.holdings.get(randomStock.symbol);
+                    if (holding) {
+                        holding.quantity += quantity;
+                        holding.costBasis += cost;
+                    } else {
+                        portfolio.holdings.set(randomStock.symbol, {
+                            symbol: randomStock.symbol,
+                            quantity: quantity,
+                            costBasis: cost,
+                            currentPrice: randomStock.price
+                        });
+                    }
+
+                    const orderId = `order_${orderIdCounter++}`;
+                    orders.set(orderId, {
+                        id: orderId,
+                        bot_id: botId,
+                        symbol: randomStock.symbol,
+                        action: 'buy',
+                        quantity: quantity,
+                        price: randomStock.price,
+                        status: 'filled',
+                        createdAt: new Date(),
+                        filledAt: new Date()
+                    });
+
+                    session.successfulTrades++;
+                    broadcastOrderUpdate(orderId, orders.get(orderId));
+                }
+            } else {
+                // Try to sell
+                const holdings = Array.from(portfolio.holdings.values());
+                if (holdings.length > 0) {
+                    const holding = holdings[Math.floor(Math.random() * holdings.length)];
+                    const quantity = Math.min(
+                        Math.floor(Math.random() * holding.quantity) + 1,
+                        holding.quantity
+                    );
+
+                    portfolio.cash += holding.currentPrice * quantity;
+                    holding.quantity -= quantity;
+                    if (holding.quantity === 0) {
+                        portfolio.holdings.delete(holding.symbol);
+                    }
+
+                    const orderId = `order_${orderIdCounter++}`;
+                    orders.set(orderId, {
+                        id: orderId,
+                        bot_id: botId,
+                        symbol: holding.symbol,
+                        action: 'sell',
+                        quantity: quantity,
+                        price: holding.currentPrice,
+                        status: 'filled',
+                        createdAt: new Date(),
+                        filledAt: new Date()
+                    });
+
+                    session.successfulTrades++;
+                    broadcastOrderUpdate(orderId, orders.get(orderId));
+                }
+            }
+        } catch (e) {
+            console.error('[Training] Simulation error:', e);
+        }
+    }, Math.random() * 2000 + 1000); // Random interval between 1-3 seconds
+}
 
 // Graceful shutdown
 process.on('SIGINT', () => {

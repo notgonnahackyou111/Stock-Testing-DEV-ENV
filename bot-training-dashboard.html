@@ -390,9 +390,10 @@
         botId = params.get('bot_id');
         botName = params.get('bot_name') || 'Unknown Bot';
 
-        const BACKEND_URL = window.location.hostname === 'localhost' 
+        // Dynamic backend URL detection - works for localhost and Render deployment
+        const BACKEND_URL = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
             ? 'http://localhost:8000'
-            : 'https://stock-testing-bots.onrender.com';
+            : window.location.origin;
 
         console.log(`[Dashboard] Bot ID: ${botId}, Backend: ${BACKEND_URL}`);
 

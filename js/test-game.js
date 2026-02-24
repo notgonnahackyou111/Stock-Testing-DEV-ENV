@@ -1,8 +1,6 @@
 /**
- * Stock Test Game Logic
- * Handles game initialization, UI updates, and trading mechanics
+ * Game State Variables
  */
-
 let gameConfig = null;
 let selectedStock = null;
 let currentFilter = 'all';
@@ -11,6 +9,8 @@ let isPaused = false;
 let updateInterval = null;
 let stockUpdateInterval = null;
 let priceChart = null; // Chart.js instance
+let currentSaveCode = null; // Currently loaded save code
+let currentPresetName = 'default'; // Currently active preset
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -698,69 +698,197 @@ function updateModeStats() {
 }
 
 /**
- * Go home
+ * Export/Import System
  */
-function goHome() {
-    if (updateInterval) clearInterval(updateInterval);
-    if (stockUpdateInterval) clearInterval(stockUpdateInterval);
-    window.location.href = 'index.html';
-}
 
-// Debug panel functionality
-function toggleDebugPanel() {
-    const box = document.getElementById('debugBox');
-    if (box.style.display === 'none') {
-        box.style.display = 'block';
-        refreshDebug();
-    } else {
-        box.style.display = 'none';
+// Open export modal and generate a save code
+async function openExportModal() {
+    try {
+        // Create a new save code on the server
+        const response = await fetch('/api/saves/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) throw new Error('Failed to create save code');
+        const data = await response.json();
+        const saveCode = data.code;
+
+        // Save the current game state with the code
+        const gameState = getCurrentState();
+        const saveResponse = await fetch(`/api/saves/${saveCode}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                gameState: gameState,
+                presetName: 'default'
+            })
+        });
+
+        if (!saveResponse.ok) throw new Error('Failed to save game state');
+
+        // Display the modal with the code
+        currentSaveCode = saveCode;
+        document.getElementById('exportCode').value = saveCode;
+        document.getElementById('exportModal').style.display = 'flex';
+        document.getElementById('copyFeedback').style.display = 'none';
+    } catch (error) {
+        console.error('Export failed:', error);
+        alert('Failed to export game. Please try again.');
     }
 }
 
-document.getElementById('debugToggle').addEventListener('click', toggleDebugPanel);
-
-function getCurrentState() {
-    return {
-        config: gameConfig,
-        simulator: simulator ? {
-            portfolio: simulator.portfolio,
-            stocks: simulator.stocks,
-            priceHistory: simulator.priceHistory,
-            simulatedTime: simulator.simulatedTime,
-            trades: simulator.trades,
-            modeState: simulator.modeState,
-            startTime: simulator.startTime,
-            initialCapital: simulator.initialCapital
-        } : null
-    };
+// Close export modal
+function closeExportModal() {
+    document.getElementById('exportModal').style.display = 'none';
 }
 
-function refreshDebug() {
-    const output = document.getElementById('debugOutput');
-    output.value = JSON.stringify(getCurrentState(), null, 2);
+// Copy save code to clipboard
+function copySaveCode() {
+    const codeInput = document.getElementById('exportCode');
+    codeInput.select();
+    document.execCommand('copy');
+    
+    const feedback = document.getElementById('copyFeedback');
+    feedback.style.display = 'block';
+    setTimeout(() => {
+        feedback.style.display = 'none';
+    }, 2000);
 }
 
-function exportState() {
-    const state = getCurrentState();
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'stock-sim-state.json';
-    a.click();
-    URL.revokeObjectURL(url);
-}
+// Open import modal
+function openImportModal() {
+    document.getElementById('importModal').style.display = 'flex';
+    document.getElementById('importCode').value = '';
+    document.getElementById('importError').style.display = 'none';
+    document.getElementById('presetsList').innerHTML = '';
+    document.getElementById('importCode').focus();
 
-function promptImport() {
-    const json = prompt('Paste saved state JSON here:');
-    if (json) {
-        try {
-            const obj = JSON.parse(json);
-            loadState(obj);
-        } catch (e) {
-            alert('Invalid JSON');
+    // Add enter key listener
+    document.getElementById('importCode').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            loadImportedGame();
         }
+    });
+}
+
+// Close import modal
+function closeImportModal() {
+    document.getElementById('importModal').style.display = 'none';
+}
+
+// Load presets for a save code
+async function loadPresetsForCode(code) {
+    try {
+        const response = await fetch(`/api/saves/${code.toUpperCase()}`);
+        
+        if (!response.ok) {
+            document.getElementById('importError').textContent = 'Save code not found. Please check and try again.';
+            document.getElementById('importError').style.display = 'block';
+            document.getElementById('presetsList').innerHTML = '';
+            return false;
+        }
+
+        const data = await response.json();
+        const presets = data.presets || [];
+
+        if (presets.length === 0) {
+            document.getElementById('importError').textContent = 'No saved data found for this code.';
+            document.getElementById('importError').style.display = 'block';
+            document.getElementById('presetsList').innerHTML = '';
+            return false;
+        }
+
+        // Display presets
+        document.getElementById('importError').style.display = 'none';
+        const presetsList = document.getElementById('presetsList');
+        presetsList.innerHTML = presets.map((preset, index) => `
+            <div class="preset-item" onclick="selectPreset('${preset.name}', this)">
+                <div class="preset-info">
+                    <div class="preset-name">${preset.name}</div>
+                    <div class="preset-date">Last updated: ${new Date(preset.updatedAt || preset.createdAt).toLocaleDateString()}</div>
+                </div>
+            </div>
+        `).join('');
+
+        // Store presets for later
+        window.importedPresets = presets;
+        return true;
+    } catch (error) {
+        console.error('Failed to load presets:', error);
+        document.getElementById('importError').textContent = 'Error loading preset data.';
+        document.getElementById('importError').style.display = 'block';
+        return false;
     }
+}
+
+// Select a preset
+function selectPreset(presetName, element) {
+    document.querySelectorAll('.preset-item').forEach(el => el.classList.remove('selected'));
+    element.classList.add('selected');
+    window.selectedPresetName = presetName;
+}
+
+// Load imported game
+async function loadImportedGame() {
+    const code = document.getElementById('importCode').value.trim().toUpperCase();
+
+    if (!code) {
+        document.getElementById('importError').textContent = 'Please enter a save code.';
+        document.getElementById('importError').style.display = 'block';
+        return;
+    }
+
+    if (code.length !== 9) {
+        document.getElementById('importError').textContent = 'Save code must be 9 characters long.';
+        document.getElementById('importError').style.display = 'block';
+        return;
+    }
+
+    // Load presets if not already loaded
+    if (!window.importedPresets || window.importedPresets.length === 0) {
+        const loaded = await loadPresetsForCode(code);
+        if (!loaded) return;
+    }
+
+    // Get selected preset or use default
+    const presetName = window.selectedPresetName || 'default';
+    
+    try {
+        const response = await fetch(`/api/saves/${code}/preset/${presetName}`);
+
+        if (!response.ok) {
+            document.getElementById('importError').textContent = `Failed to load preset "${presetName}".`;
+            document.getElementById('importError').style.display = 'block';
+            return;
+        }
+
+        const data = await response.json();
+        const gameState = data.gameState;
+
+        // Load the state
+        loadState(gameState);
+        currentSaveCode = code;
+        currentPresetName = presetName;
+
+        // Close modal and show success
+        closeImportModal();
+        alert(`✓ Game loaded from ${presetName} preset!`);
+    } catch (error) {
+        console.error('Failed to load game:', error);
+        document.getElementById('importError').textContent = 'Failed to load game. Please try again.';
+        document.getElementById('importError').style.display = 'block';
+    }
+}
+
+// Legacy export function (kept for debug panel compatibility)
+function exportState() {
+    openExportModal();
+}
+
+// Legacy import function (kept for debug panel compatibility)
+function promptImport() {
+    openImportModal();
 }
 
 function loadState(state) {
@@ -781,6 +909,76 @@ function loadState(state) {
     renderStocks();
     updateDisplay();
     if (simulator) startPriceUpdates();
+}
+
+/**
+ * Get the current game state for saving
+ */
+function getCurrentState() {
+    return {
+        config: gameConfig,
+        simulator: simulator ? {
+            portfolio: simulator.portfolio,
+            stocks: simulator.stocks,
+            priceHistory: simulator.priceHistory,
+            simulatedTime: simulator.simulatedTime,
+            trades: simulator.trades,
+            modeState: simulator.modeState,
+            startTime: simulator.startTime,
+            initialCapital: simulator.initialCapital
+        } : null
+    };
+}
+
+/**
+ * Debug Panel Functionality
+ */
+function toggleDebugPanel() {
+    const box = document.getElementById('debugBox');
+    if (box.style.display === 'none') {
+        box.style.display = 'block';
+        refreshDebug();
+    } else {
+        box.style.display = 'none';
+    }
+}
+
+function refreshDebug() {
+    const output = document.getElementById('debugOutput');
+    output.value = JSON.stringify(getCurrentState(), null, 2);
+}
+
+// Setup debug toggle
+if (document.getElementById('debugToggle')) {
+    document.getElementById('debugToggle').addEventListener('click', toggleDebugPanel);
+}
+
+/**
+ * Navigation
+ */
+function goHome() {
+    // Save current game state if there's a save code
+    if (currentSaveCode && simulator && simulator.trades.length > 0) {
+        const gameState = getCurrentState();
+        fetch(`/api/saves/${currentSaveCode}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                gameState: gameState,
+                presetName: currentPresetName || 'default'
+            })
+        }).catch(err => console.error('Failed to auto-save:', err));
+    }
+
+    // Clear intervals
+    if (updateInterval) clearInterval(updateInterval);
+    if (stockUpdateInterval) clearInterval(stockUpdateInterval);
+    
+    // Reset state for next game
+    sessionStorage.removeItem('gameConfig');
+    
+    // Go home
+    window.location.href = 'index.html';
 }
 
 // Prevent accidental page close

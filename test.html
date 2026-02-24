@@ -13,7 +13,56 @@
             <div class="mode-badge" id="modeBadge">Mode: Classic</div>
         </div>
         <div class="right">
+            <button onclick="openExportModal()" class="btn-export">💾 Export</button>
+            <button onclick="openImportModal()" class="btn-import">📥 Import</button>
             <button onclick="goHome()" class="btn-home">← Home</button>
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="exportModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Export Game Progress</h2>
+                <button onclick="closeExportModal()" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px; color: #666;">Your game progress has been saved! Share this code to load your progress later:</p>
+                <div class="save-code-display">
+                    <input type="text" id="exportCode" readonly style="flex: 1; padding: 12px; font-size: 16px; font-weight: bold; letter-spacing: 1px; border: 2px solid #667eea; border-radius: 8px;">
+                    <button onclick="copySaveCode()" class="btn-copy">📋 Copy</button>
+                </div>
+                <div id="copyFeedback" style="margin-top: 10px; color: #10b981; font-weight: 600; display: none;">Code copied to clipboard!</div>
+                <div style="margin-top: 20px; padding: 15px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid #667eea;">
+                    <p style="font-size: 14px; color: #333;"><strong>💡 Tip:</strong> Use this code to import your progress when you play again. You can have multiple saves with one code!</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeExportModal()" class="btn-cancel">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="importModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Import Game Progress</h2>
+                <button onclick="closeImportModal()" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px; color: #666;">Enter your save code to load your previous progress:</p>
+                <input type="text" id="importCode" placeholder="Enter your 9-character save code (e.g., ABC123XYZ)" style="width: 100%; padding: 12px; font-size: 16px; border: 2px solid #667eea; border-radius: 8px; margin-bottom: 15px; text-transform: uppercase;">
+                <div id="importError" style="color: #ef4444; display: none; margin-bottom: 15px;"></div>
+                <div id="presetsContainer" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 10px; font-weight: 600; color: #333;">Available Presets:</label>
+                    <div id="presetsList" style="max-height: 200px; overflow-y: auto;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="loadImportedGame()" class="btn-import">Load Game</button>
+                <button onclick="closeImportModal()" class="btn-cancel">Cancel</button>
+            </div>
         </div>
     </div>
 

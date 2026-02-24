@@ -30,7 +30,7 @@ function tryListen(portIndex) {
     }
 
     const attempt = PORTS[portIndex];
-    server.listen(attempt, () => {
+    server.listen(attempt, '0.0.0.0', () => {
         PORT = attempt;
         console.log(`Server listening on port ${PORT}`);
     });
@@ -69,6 +69,7 @@ const orders = new Map();
 const portfolios = new Map();
 const subscriptions = new Map();
 const marketData = new Map();
+const gameSaves = new Map(); // Save codes -> game state
 let orderIdCounter = 1000;
 let botIdCounter = 1;
 
@@ -90,6 +91,41 @@ const initializeMarketData = () => {
 };
 
 /**
+ * Helper functions for game saves
+ */
+
+// Generate a random alphanumeric code (e.g., "ABC123XYZ")
+function generateSaveCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const codeLength = 9;
+    let code = '';
+    for (let i = 0; i < codeLength; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+// Check if a save code exists
+function savecodeExists(code) {
+    return gameSaves.has(code.toUpperCase());
+}
+
+// Get or initialize save data for a code
+function getOrCreateSave(code) {
+    const upperCode = code.toUpperCase();
+    if (!gameSaves.has(upperCode)) {
+        gameSaves.set(upperCode, {
+            code: upperCode,
+            createdAt: new Date(),
+            lastUpdatedAt: new Date(),
+            presets: {},
+            activePreset: 'default'
+        });
+    }
+    return gameSaves.get(upperCode);
+}
+
+/**
  * REST API Endpoints
  */
 
@@ -99,6 +135,150 @@ app.get('/health', (req, res) => {
         status: 'ok',
         version: API_VERSION,
         timestamp: new Date()
+    });
+});
+
+/**
+ * Game Save/Load Endpoints
+ */
+
+// Generate and create a new save code
+app.post('/api/saves/create', (req, res) => {
+    let code = generateSaveCode();
+    
+    // Ensure uniqueness
+    while (gameSaves.has(code)) {
+        code = generateSaveCode();
+    }
+    
+    const save = getOrCreateSave(code);
+    
+    res.status(201).json({
+        success: true,
+        code: code,
+        message: 'Save code created successfully'
+    });
+});
+
+// Get save data by code
+app.get('/api/saves/:code', (req, res) => {
+    const { code } = req.params;
+    const save = gameSaves.get(code.toUpperCase());
+    
+    if (!save) {
+        return res.status(404).json({
+            error: 'Save code not found'
+        });
+    }
+    
+    // Return presets with their names
+    const presetsArray = Object.keys(save.presets || {}).map(name => ({
+        name: name,
+        createdAt: save.presets[name].createdAt,
+        data: save.presets[name].data
+    }));
+    
+    res.json({
+        code: code.toUpperCase(),
+        createdAt: save.createdAt,
+        lastUpdatedAt: save.lastUpdatedAt,
+        activePreset: save.activePreset,
+        presets: presetsArray
+    });
+});
+
+// Save game state to a code with a preset name
+app.post('/api/saves/:code', (req, res) => {
+    const { code } = req.params;
+    const { gameState, presetName } = req.body;
+    
+    if (!gameState) {
+        return res.status(400).json({
+            error: 'Missing gameState in request body'
+        });
+    }
+    
+    const save = getOrCreateSave(code);
+    const pName = presetName || 'default';
+    
+    // Create or update the preset
+    if (!save.presets) {
+        save.presets = {};
+    }
+    
+    save.presets[pName] = {
+        data: gameState,
+        createdAt: save.presets[pName]?.createdAt || new Date(),
+        updatedAt: new Date()
+    };
+    
+    save.activePreset = pName;
+    save.lastUpdatedAt = new Date();
+    
+    res.json({
+        success: true,
+        code: code.toUpperCase(),
+        presetName: pName,
+        message: `Game state saved to preset "${pName}"`
+    });
+});
+
+// Load a specific preset from a save code
+app.get('/api/saves/:code/preset/:presetName', (req, res) => {
+    const { code, presetName } = req.params;
+    const save = gameSaves.get(code.toUpperCase());
+    
+    if (!save) {
+        return res.status(404).json({
+            error: 'Save code not found'
+        });
+    }
+    
+    const preset = save.presets?.[presetName];
+    
+    if (!preset) {
+        return res.status(404).json({
+            error: `Preset "${presetName}" not found`
+        });
+    }
+    
+    res.json({
+        code: code.toUpperCase(),
+        presetName: presetName,
+        gameState: preset.data,
+        createdAt: preset.createdAt,
+        updatedAt: preset.updatedAt
+    });
+});
+
+// Delete a preset from a save code
+app.delete('/api/saves/:code/preset/:presetName', (req, res) => {
+    const { code, presetName } = req.params;
+    const save = gameSaves.get(code.toUpperCase());
+    
+    if (!save) {
+        return res.status(404).json({
+            error: 'Save code not found'
+        });
+    }
+    
+    if (!save.presets?.[presetName]) {
+        return res.status(404).json({
+            error: `Preset "${presetName}" not found`
+        });
+    }
+    
+    delete save.presets[presetName];
+    
+    // If deleted preset was active, set active to first available or none
+    if (save.activePreset === presetName) {
+        const remaining = Object.keys(save.presets || {});
+        save.activePreset = remaining.length > 0 ? remaining[0] : null;
+    }
+    
+    res.json({
+        success: true,
+        message: `Preset "${presetName}" deleted`
     });
 });
 
@@ -539,7 +719,7 @@ app.use((req, res) => {
  * Server Startup
  */
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`
     ╔══════════════════════════════════════════════╗
     ║     Stock Testing Bot API Server v${API_VERSION}      ║
@@ -551,6 +731,11 @@ server.listen(PORT, () => {
     Health Check: http://localhost:${PORT}/health
     
     Available endpoints:
+    ✓ POST   /api/saves/create
+    ✓ GET    /api/saves/:code
+    ✓ POST   /api/saves/:code
+    ✓ GET    /api/saves/:code/preset/:presetName
+    ✓ DELETE /api/saves/:code/preset/:presetName
     ✓ POST   /api/bot/register
     ✓ GET    /api/bot/:botId
     ✓ POST   /api/bot/:botId/disconnect

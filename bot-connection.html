@@ -692,7 +692,7 @@ simulator.close_position('AAPL', 10)</code>
             }
         }
 
-        function connectBot(e) {
+        async function connectBot(e) {
             e.preventDefault();
 
             const botName = document.getElementById('botName').value;
@@ -700,7 +700,34 @@ simulator.close_position('AAPL', 10)</code>
             const apiKey = document.getElementById('apiKey').value;
             const description = document.getElementById('botDescription').value;
 
-            // Create mock bot connection (real version would use actual API)
+            // call backend API to register bot
+            try {
+                const response = await fetch('/api/bot/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: botName,
+                        type: botType,
+                        api_key: apiKey,
+                        description: description
+                    })
+                });
+                const data = await response.json();
+                if (data.success && data.bot_id) {
+                    const newBotId = data.bot_id;
+                    showAlert('Bot registered successfully! Redirecting to dashboard...', 'success');
+                    // navigate to dashboard stats view
+                    window.location.href = `/bot-dashboard.html?botId=${encodeURIComponent(newBotId)}`;
+                    return;
+                } else {
+                    throw new Error(data.error || 'Registration failed');
+                }
+            } catch (err) {
+                console.error('Error registering bot:', err);
+                showAlert('Failed to register bot: ' + err.message, 'error');
+            }
+
+            // fallback to mock connection for offline/demo mode
             const botConfig = {
                 name: botName,
                 type: botType,

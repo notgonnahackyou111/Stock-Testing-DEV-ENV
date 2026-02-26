@@ -6,6 +6,7 @@
  * Port: 8000
  */
 
+require('dotenv').config(); // Load environment variables
 const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
@@ -13,6 +14,31 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
+const { initializeFirebase, getDatabase, isFirebaseReady } = require('./firebase-config');
+const { verifyToken, verifyOptionalToken, generateToken } = require('./auth-middleware');
+const { registerUser, loginUser, getUserProfile, updateUserStats, createAdminAccount, createTesterAccount } = require('./user-manager');
+const BacktestEngine = require('./backtest-engine');
+const notificationService = require('./notification-service');
+
+// initialize default admin/tester from environment variables if provided
+(async () => {
+    if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD) {
+        try {
+            await createAdminAccount(process.env.ADMIN_USERNAME, process.env.ADMIN_PASSWORD, 'Administrator');
+            console.log('[Init] Default admin account created or already exists');
+        } catch (err) {
+            console.warn('[Init] Failed to create admin account:', err.message);
+        }
+    }
+    if (process.env.TESTER_USERNAME && process.env.TESTER_PASSWORD) {
+        try {
+            await createTesterAccount(process.env.TESTER_USERNAME, process.env.TESTER_PASSWORD, 'Tester');
+            console.log('[Init] Default tester account created or already exists');
+        } catch (err) {
+            console.warn('[Init] Failed to create tester account:', err.message);
+        }
+    }
+})();
 
 const app = express();
 const server = http.createServer(app);
@@ -63,6 +89,10 @@ if (PORTS.length === 0) PORTS = [8000];
 let PORT = PORTS[0];
 const API_VERSION = '1.0.0';
 
+// Initialize Firebase
+const firebaseDb = initializeFirebase();
+const useFirebase = isFirebaseReady();
+
 // In-memory data stores
 const bots = new Map();
 const orders = new Map();
@@ -106,13 +136,48 @@ function generateSaveCode() {
 }
 
 // Check if a save code exists
-function savecodeExists(code) {
+async function savecodeExists(code) {
+    if (useFirebase) {
+        try {
+            const doc = await firebaseDb.collection('gameSaves').doc(code.toUpperCase()).get();
+            return doc.exists;
+        } catch (error) {
+            console.error('[Firebase] Error checking save code:', error.message);
+            return false;
+        }
+    }
     return gameSaves.has(code.toUpperCase());
 }
 
 // Get or initialize save data for a code
-function getOrCreateSave(code) {
+async function getOrCreateSave(code) {
     const upperCode = code.toUpperCase();
+    
+    if (useFirebase) {
+        try {
+            const docRef = firebaseDb.collection('gameSaves').doc(upperCode);
+            const doc = await docRef.get();
+            
+            if (doc.exists) {
+                return doc.data();
+            }
+            
+            // Create new save
+            const newSave = {
+                code: upperCode,
+                createdAt: new Date(),
+                lastUpdatedAt: new Date(),
+                presets: {},
+                activePreset: 'default'
+            };
+            await docRef.set(newSave);
+            return newSave;
+        } catch (error) {
+            console.error('[Firebase] Error in getOrCreateSave:', error.message);
+            // Fallback to in-memory
+        }
+    }
+    
     if (!gameSaves.has(upperCode)) {
         gameSaves.set(upperCode, {
             code: upperCode,
@@ -129,13 +194,405 @@ function getOrCreateSave(code) {
  * REST API Endpoints
  */
 
+// ==================== AUTHENTICATION ENDPOINTS ====================
+
+/**
+ * User Registration
+ * POST /api/auth/register
+ */
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { email, username, password, displayName } = req.body;
+
+        if ((!email && !username) || !password) {
+            return res.status(400).json({
+                error: 'Email or username, and password are required'
+            });
+        }
+
+        const user = await registerUser({ email, username, password, displayName });
+        const token = generateToken(user.userId, user.email || user.username, user.role);
+
+        res.status(201).json({
+            success: true,
+            user,
+            token,
+            message: 'Registration successful'
+        });
+    } catch (error) {
+        console.error('[Auth] Registration error:', error.message);
+        res.status(400).json({
+            error: error.message
+        });
+    }
+});
+
+/**
+ * User Login
+ * POST /api/auth/login
+ */
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { identifier, password } = req.body;
+        // identifier may be email or username
+        if (!identifier || !password) {
+            return res.status(400).json({
+                error: 'Identifier and password required'
+            });
+        }
+
+        const result = await loginUser(identifier, password);
+
+        res.json({
+            success: true,
+            ...result,
+            message: 'Login successful'
+        });
+    } catch (error) {
+        console.error('[Auth] Login error:', error.message);
+        res.status(401).json({
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Get User Profile
+ * GET /api/auth/profile
+ */
+app.get('/api/auth/profile', verifyToken, async (req, res) => {
+    try {
+        const user = await getUserProfile(req.userId);
+
+        res.json({
+            success: true,
+            user
+        });
+    } catch (error) {
+        console.error('[Auth] Profile fetch error:', error.message);
+        res.status(404).json({
+            error: error.message
+        });
+    }
+});
+
+// ==================== BACKTESTING ENDPOINTS ====================
+
+/**
+ * Run Backtest
+ * POST /api/backtest/run
+ */
+app.post('/api/backtest/run', verifyOptionalToken, (req, res) => {
+    try {
+        const { 
+            symbols = ['AAPL', 'MSFT', 'GOOGL'],
+            startDate = '2025-01-01',
+            endDate = new Date().toISOString(),
+            initialCapital = 100000,
+            strategy = 'buyAndHold'
+        } = req.body;
+
+        const backtest = new BacktestEngine({
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
+            initialCapital
+        });
+
+        // Define strategy
+        const strategyObj = {
+            symbols,
+            execute: (context) => {
+                // Simple buy and hold strategy
+                if (!context.portfolio.holdings[symbols[0]] && context.portfolio.cash > 0) {
+                    return [{
+                        type: 'BUY',
+                        symbol: symbols[0],
+                        quantity: Math.floor(context.portfolio.cash / 1000)
+                    }];
+                }
+                return [];
+            }
+        };
+
+        // Run backtest
+        const results = backtest.run(strategyObj);
+
+        // Save backtest result if user logged in
+        if (req.userId) {
+            notificationService.createNotification(
+                req.userId,
+                '📊 Backtest Completed',
+                `${strategy} returned ${results.returnPercent.toFixed(2)}%`,
+                'success',
+                results
+            );
+        }
+
+        res.json({
+            success: true,
+            results,
+            report: backtest.getReport()
+        });
+    } catch (error) {
+        console.error('[Backtest] Error:', error.message);
+        res.status(500).json({
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Get Backtest Report
+ * GET /api/backtest/:backtestId
+ */
+app.get('/api/backtest/:backtestId', (req, res) => {
+    // Note: In production, fetch from database
+    res.json({
+        success: false,
+        message: 'Backtest retrieval not yet implemented'
+    });
+});
+
+// ==================== NOTIFICATION ENDPOINTS ====================
+
+/**
+ * Get User Notifications
+ * GET /api/notifications
+ */
+app.get('/api/notifications', verifyToken, async (req, res) => {
+    try {
+        const notifications = await notificationService.getUserNotifications(req.userId);
+
+        res.json({
+            success: true,
+            notifications
+        });
+    } catch (error) {
+        console.error('[Notification] Error fetching:', error.message);
+        res.status(500).json({
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Mark Notification as Read
+ * POST /api/notifications/:id/read
+ */
+app.post('/api/notifications/:id/read', verifyToken, async (req, res) => {
+    try {
+        await notificationService.markAsRead(req.params.id);
+
+        res.json({
+            success: true,
+            message: 'Notification marked as read'
+        });
+    } catch (error) {
+        console.error('[Notification] Error marking as read:', error.message);
+        res.status(500).json({
+            error: error.message
+        });
+    }
+});
+
+// ==================== BOT DASHBOARD ENDPOINTS ====================
+
+/**
+ * Get Bot Statistics (for dashboard)
+ * GET /api/bot/:botId/stats
+ */
+app.get('/api/bot/:botId/stats', (req, res) => {
+    const { botId } = req.params;
+    const bot = bots.get(botId);
+
+    if (!bot) {
+        return res.status(404).json({
+            error: 'Bot not found'
+        });
+    }
+
+    const portfolio = portfolios.get(botId) || { cash: 0, holdings: {} };
+    const botOrders = Array.from(orders.values()).filter(o => o.botId === botId);
+    
+    const winningTrades = botOrders.filter(o => o.gain >= 0).length;
+    const losingTrades = botOrders.filter(o => o.gain < 0).length;
+    const totalTrades = botOrders.length;
+
+    res.json({
+        success: true,
+        name: bot.name,
+        status: bot.status || 'inactive',
+        initialCapital: bot.initialCapital || 100000,
+        equity: (portfolio.cash + Object.values(portfolio.holdings || {}).reduce((sum, h) => sum + (h.quantity * (h.currentPrice || 0)), 0)),
+        cash: portfolio.cash,
+        holdingsValue: Object.values(portfolio.holdings || {}).reduce((sum, h) => sum + (h.quantity * (h.currentPrice || 0)), 0),
+        holdingCount: Object.keys(portfolio.holdings || {}).length,
+        totalReturn: (portfolio.cash + Object.values(portfolio.holdings || {}).reduce((sum, h) => sum + (h.quantity * (h.currentPrice || 0)), 0)) - (bot.initialCapital || 100000),
+        returnPercent: ((portfolio.cash + Object.values(portfolio.holdings || {}).reduce((sum, h) => sum + (h.quantity * (h.currentPrice || 0)), 0)) - (bot.initialCapital || 100000)) / (bot.initialCapital || 100000) * 100,
+        totalTrades,
+        winningTrades,
+        losingTrades,
+        winRate: totalTrades > 0 ? (winningTrades / totalTrades * 100) : 0,
+        winLossRatio: losingTrades > 0 ? (winningTrades / losingTrades) : (winningTrades > 0 ? winningTrades : 0),
+        leverage: 1.0,
+        activeOrders: botOrders.filter(o => o.status === 'pending').length,
+        recentTrades: botOrders.slice(-10),
+        portfolio: portfolio.holdings,
+        equityHistory: [/* would contain historical equity values */]
+    });
+});
+
+/**
+ * Start Bot Simulation
+ * POST /api/bot/:botId/start
+ */
+app.post('/api/bot/:botId/start', (req, res) => {
+    const { botId } = req.params;
+    const bot = bots.get(botId);
+
+    if (!bot) {
+        return res.status(404).json({
+            error: 'Bot not found'
+        });
+    }
+
+    bot.status = 'running';
+    res.json({
+        success: true,
+        message: 'Bot simulation started',
+        status: bot.status
+    });
+});
+
+/**
+ * Pause Bot Simulation
+ * POST /api/bot/:botId/pause
+ */
+app.post('/api/bot/:botId/pause', (req, res) => {
+    const { botId } = req.params;
+    const bot = bots.get(botId);
+
+    if (!bot) {
+        return res.status(404).json({
+            error: 'Bot not found'
+        });
+    }
+
+    bot.status = 'paused';
+    res.json({
+        success: true,
+        message: 'Bot simulation paused',
+        status: bot.status
+    });
+});
+
+/**
+ * Reset Bot Simulation
+ * POST /api/bot/:botId/reset
+ */
+app.post('/api/bot/:botId/reset', (req, res) => {
+    const { botId } = req.params;
+    const bot = bots.get(botId);
+
+    if (!bot) {
+        return res.status(404).json({
+            error: 'Bot not found'
+        });
+    }
+
+    portfolios.set(botId, {
+        cash: bot.initialCapital || 100000,
+        holdings: {}
+    });
+
+    orders.forEach((order, key) => {
+        if (order.botId === botId) {
+            orders.delete(key);
+        }
+    });
+
+    bot.status = 'reset';
+    res.json({
+        success: true,
+        message: 'Bot simulation reset',
+        status: bot.status
+    });
+});
+
 // Health check
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
         version: API_VERSION,
-        timestamp: new Date()
+        timestamp: new Date(),
+        storage: useFirebase ? 'Firebase' : 'In-Memory (Demo Mode)',
+        firebaseStatus: useFirebase ? 'Connected' : 'Not Configured'
     });
+});
+
+/**
+ * Authentication Endpoints
+ */
+
+// Register new user
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { email, username, password } = req.body;
+        const result = await registerUser(email, username, password);
+        res.status(201).json({
+            success: true,
+            message: 'User registered successfully',
+            user: result.user,
+            token: result.token
+        });
+    } catch (error) {
+        res.status(400).json({
+            error: error.message
+        });
+    }
+});
+
+// Login user
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const result = await loginUser(email, password);
+        res.json({
+            success: true,
+            message: 'Login successful',
+            user: result.user,
+            token: result.token
+        });
+    } catch (error) {
+        res.status(401).json({
+            error: error.message
+        });
+    }
+});
+
+// Verify token
+app.post('/api/auth/verify', (req, res) => {
+    try {
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1];
+
+        if (!token) {
+            return res.status(401).json({ error: 'Token required' });
+        }
+
+        const decoded = verifyToken(token);
+        if (!decoded) {
+            return res.status(403).json({ error: 'Invalid or expired token' });
+        }
+
+        const user = getUserById(decoded.userId);
+        res.json({
+            valid: true,
+            user: user
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 /**
@@ -143,143 +600,333 @@ app.get('/health', (req, res) => {
  */
 
 // Generate and create a new save code
-app.post('/api/saves/create', (req, res) => {
-    let code = generateSaveCode();
-    
-    // Ensure uniqueness
-    while (gameSaves.has(code)) {
-        code = generateSaveCode();
+app.post('/api/saves/create', async (req, res) => {
+    try {
+        let code = generateSaveCode();
+        let attempts = 0;
+        
+        // Ensure uniqueness
+        while ((await savecodeExists(code)) && attempts < 100) {
+            code = generateSaveCode();
+            attempts++;
+        }
+        
+        if (attempts >= 100) {
+            return res.status(500).json({
+                error: 'Failed to generate unique save code'
+            });
+        }
+        
+        const save = await getOrCreateSave(code);
+        save.userId = req.user.userId; // Associate with user
+        
+        res.status(201).json({
+            success: true,
+            code: code,
+            message: 'Save code created successfully',
+            storage: useFirebase ? 'Firebase' : 'In-Memory',
+            userId: req.user.userId
+        });
+    } catch (error) {
+        console.error('[Save API] Error creating save code:', error.message);
+        res.status(500).json({
+            error: 'Failed to create save code',
+            details: error.message
+        });
     }
-    
-    const save = getOrCreateSave(code);
-    
-    res.status(201).json({
-        success: true,
-        code: code,
-        message: 'Save code created successfully'
-    });
 });
 
 // Get save data by code
-app.get('/api/saves/:code', (req, res) => {
-    const { code } = req.params;
-    const save = gameSaves.get(code.toUpperCase());
-    
-    if (!save) {
-        return res.status(404).json({
-            error: 'Save code not found'
+app.get('/api/saves/:code', async (req, res) => {
+    try {
+        const { code } = req.params;
+        const upperCode = code.toUpperCase();
+        
+        let save;
+        
+        if (useFirebase) {
+            try {
+                const doc = await firebaseDb.collection('gameSaves').doc(upperCode).get();
+                if (!doc.exists) {
+                    return res.status(404).json({
+                        error: 'Save code not found'
+                    });
+                }
+                save = doc.data();
+            } catch (error) {
+                console.error('[Firebase] Error fetching save:', error.message);
+                return res.status(500).json({
+                    error: 'Database error',
+                    details: error.message
+                });
+            }
+        } else {
+            save = gameSaves.get(upperCode);
+            if (!save) {
+                return res.status(404).json({
+                    error: 'Save code not found'
+                });
+            }
+        }
+        
+        // Return presets with their names
+        const presetsArray = Object.keys(save.presets || {}).map(name => ({
+            name: name,
+            createdAt: save.presets[name].createdAt,
+            data: save.presets[name].data
+        }));
+        
+        res.json({
+            code: upperCode,
+            createdAt: save.createdAt,
+            lastUpdatedAt: save.lastUpdatedAt,
+            activePreset: save.activePreset,
+            presets: presetsArray,
+            storage: useFirebase ? 'Firebase' : 'In-Memory'
+        });
+    } catch (error) {
+        console.error('[Save API] Error getting save:', error.message);
+        res.status(500).json({
+            error: 'Failed to retrieve save',
+            details: error.message
         });
     }
-    
-    // Return presets with their names
-    const presetsArray = Object.keys(save.presets || {}).map(name => ({
-        name: name,
-        createdAt: save.presets[name].createdAt,
-        data: save.presets[name].data
-    }));
-    
-    res.json({
-        code: code.toUpperCase(),
-        createdAt: save.createdAt,
-        lastUpdatedAt: save.lastUpdatedAt,
-        activePreset: save.activePreset,
-        presets: presetsArray
-    });
 });
 
 // Save game state to a code with a preset name
-app.post('/api/saves/:code', (req, res) => {
-    const { code } = req.params;
-    const { gameState, presetName } = req.body;
-    
-    if (!gameState) {
-        return res.status(400).json({
-            error: 'Missing gameState in request body'
+app.post('/api/saves/:code', async (req, res) => {
+    try {
+        const { code } = req.params;
+        const { gameState, presetName } = req.body;
+        
+        if (!gameState) {
+            return res.status(400).json({
+                error: 'Missing gameState in request body'
+            });
+        }
+        
+        const upperCode = code.toUpperCase();
+        const pName = presetName || 'default';
+        
+        if (useFirebase) {
+            try {
+                const docRef = firebaseDb.collection('gameSaves').doc(upperCode);
+                const doc = await docRef.get();
+                
+                let save = doc.exists ? doc.data() : {
+                    code: upperCode,
+                    createdAt: new Date(),
+                    lastUpdatedAt: new Date(),
+                    presets: {},
+                    activePreset: 'default'
+                };
+                
+                // Update or create the preset
+                if (!save.presets) {
+                    save.presets = {};
+                }
+                
+                save.presets[pName] = {
+                    data: gameState,
+                    createdAt: save.presets[pName]?.createdAt || new Date(),
+                    updatedAt: new Date()
+                };
+                
+                save.activePreset = pName;
+                save.lastUpdatedAt = new Date();
+                
+                await docRef.set(save);
+                
+                return res.json({
+                    success: true,
+                    code: upperCode,
+                    presetName: pName,
+                    message: `Game state saved to preset "${pName}"`,
+                    storage: 'Firebase'
+                });
+            } catch (error) {
+                console.error('[Firebase] Error saving preset:', error.message);
+                return res.status(500).json({
+                    error: 'Failed to save game state',
+                    details: error.message
+                });
+            }
+        } else {
+            const save = await getOrCreateSave(code);
+            
+            // Create or update the preset
+            if (!save.presets) {
+                save.presets = {};
+            }
+            
+            save.presets[pName] = {
+                data: gameState,
+                createdAt: save.presets[pName]?.createdAt || new Date(),
+                updatedAt: new Date()
+            };
+            
+            save.activePreset = pName;
+            save.lastUpdatedAt = new Date();
+            
+            res.json({
+                success: true,
+                code: upperCode,
+                presetName: pName,
+                message: `Game state saved to preset "${pName}"`,
+                storage: 'In-Memory'
+            });
+        }
+    } catch (error) {
+        console.error('[Save API] Error saving preset:', error.message);
+        res.status(500).json({
+            error: 'Failed to save game state',
+            details: error.message
         });
     }
-    
-    const save = getOrCreateSave(code);
-    const pName = presetName || 'default';
-    
-    // Create or update the preset
-    if (!save.presets) {
-        save.presets = {};
-    }
-    
-    save.presets[pName] = {
-        data: gameState,
-        createdAt: save.presets[pName]?.createdAt || new Date(),
-        updatedAt: new Date()
-    };
-    
-    save.activePreset = pName;
-    save.lastUpdatedAt = new Date();
-    
-    res.json({
-        success: true,
-        code: code.toUpperCase(),
-        presetName: pName,
-        message: `Game state saved to preset "${pName}"`
-    });
 });
 
 // Load a specific preset from a save code
-app.get('/api/saves/:code/preset/:presetName', (req, res) => {
-    const { code, presetName } = req.params;
-    const save = gameSaves.get(code.toUpperCase());
-    
-    if (!save) {
-        return res.status(404).json({
-            error: 'Save code not found'
+app.get('/api/saves/:code/preset/:presetName', async (req, res) => {
+    try {
+        const { code, presetName } = req.params;
+        const upperCode = code.toUpperCase();
+        
+        let save;
+        
+        if (useFirebase) {
+            try {
+                const doc = await firebaseDb.collection('gameSaves').doc(upperCode).get();
+                if (!doc.exists) {
+                    return res.status(404).json({
+                        error: 'Save code not found'
+                    });
+                }
+                save = doc.data();
+            } catch (error) {
+                console.error('[Firebase] Error fetching save:', error.message);
+                return res.status(500).json({
+                    error: 'Database error',
+                    details: error.message
+                });
+            }
+        } else {
+            save = gameSaves.get(upperCode);
+            if (!save) {
+                return res.status(404).json({
+                    error: 'Save code not found'
+                });
+            }
+        }
+        
+        const preset = save.presets?.[presetName];
+        
+        if (!preset) {
+            return res.status(404).json({
+                error: `Preset "${presetName}" not found`
+            });
+        }
+        
+        res.json({
+            code: upperCode,
+            presetName: presetName,
+            gameState: preset.data,
+            createdAt: preset.createdAt,
+            updatedAt: preset.updatedAt,
+            storage: useFirebase ? 'Firebase' : 'In-Memory'
+        });
+    } catch (error) {
+        console.error('[Save API] Error loading preset:', error.message);
+        res.status(500).json({
+            error: 'Failed to load preset',
+            details: error.message
         });
     }
-    
-    const preset = save.presets?.[presetName];
-    
-    if (!preset) {
-        return res.status(404).json({
-            error: `Preset "${presetName}" not found`
-        });
-    }
-    
-    res.json({
-        code: code.toUpperCase(),
-        presetName: presetName,
-        gameState: preset.data,
-        createdAt: preset.createdAt,
-        updatedAt: preset.updatedAt
-    });
 });
 
 // Delete a preset from a save code
-app.delete('/api/saves/:code/preset/:presetName', (req, res) => {
-    const { code, presetName } = req.params;
-    const save = gameSaves.get(code.toUpperCase());
-    
-    if (!save) {
-        return res.status(404).json({
-            error: 'Save code not found'
+app.delete('/api/saves/:code/preset/:presetName', async (req, res) => {
+    try {
+        const { code, presetName } = req.params;
+        const upperCode = code.toUpperCase();
+        
+        if (useFirebase) {
+            try {
+                const docRef = firebaseDb.collection('gameSaves').doc(upperCode);
+                const doc = await docRef.get();
+                
+                if (!doc.exists) {
+                    return res.status(404).json({
+                        error: 'Save code not found'
+                    });
+                }
+                
+                const save = doc.data();
+                
+                if (!save.presets?.[presetName]) {
+                    return res.status(404).json({
+                        error: `Preset "${presetName}" not found`
+                    });
+                }
+                
+                delete save.presets[presetName];
+                
+                // If deleted preset was active, set active to first available or none
+                if (save.activePreset === presetName) {
+                    const remaining = Object.keys(save.presets || {});
+                    save.activePreset = remaining.length > 0 ? remaining[0] : null;
+                }
+                
+                save.lastUpdatedAt = new Date();
+                await docRef.set(save);
+                
+                return res.json({
+                    success: true,
+                    message: `Preset "${presetName}" deleted`,
+                    storage: 'Firebase'
+                });
+            } catch (error) {
+                console.error('[Firebase] Error deleting preset:', error.message);
+                return res.status(500).json({
+                    error: 'Failed to delete preset',
+                    details: error.message
+                });
+            }
+        } else {
+            const save = gameSaves.get(upperCode);
+            
+            if (!save) {
+                return res.status(404).json({
+                    error: 'Save code not found'
+                });
+            }
+            
+            if (!save.presets?.[presetName]) {
+                return res.status(404).json({
+                    error: `Preset "${presetName}" not found`
+                });
+            }
+            
+            delete save.presets[presetName];
+            
+            // If deleted preset was active, set active to first available or none
+            if (save.activePreset === presetName) {
+                const remaining = Object.keys(save.presets || {});
+                save.activePreset = remaining.length > 0 ? remaining[0] : null;
+            }
+            
+            res.json({
+                success: true,
+                message: `Preset "${presetName}" deleted`,
+                storage: 'In-Memory'
+            });
+        }
+    } catch (error) {
+        console.error('[Save API] Error deleting preset:', error.message);
+        res.status(500).json({
+            error: 'Failed to delete preset',
+            details: error.message
         });
     }
-    
-    if (!save.presets?.[presetName]) {
-        return res.status(404).json({
-            error: `Preset "${presetName}" not found`
-        });
-    }
-    
-    delete save.presets[presetName];
-    
-    // If deleted preset was active, set active to first available or none
-    if (save.activePreset === presetName) {
-        const remaining = Object.keys(save.presets || {});
-        save.activePreset = remaining.length > 0 ? remaining[0] : null;
-    }
-    
-    res.json({
-        success: true,
-        message: `Preset "${presetName}" deleted`
-    });
 });
 
 // Register Bot
@@ -322,7 +969,8 @@ app.post('/api/bot/register', (req, res) => {
         success: true,
         bot_id: botId,
         message: `Bot '${name}' registered successfully`,
-        api_endpoint: `/api/bot/${botId}`
+        api_endpoint: `/api/bot/${botId}`,
+        dashboard_url: `/bot-dashboard.html?botId=${botId}`
     });
 });
 
@@ -526,6 +1174,57 @@ app.get('/api/portfolio', (req, res) => {
         unrealizedGains: totalValue - 100000, // Assuming 100k starting
         percentReturn: ((totalValue - 100000) / 100000 * 100).toFixed(2) + '%'
     });
+});
+
+// Get list of all registered bots (admin/overview)
+app.get('/api/bots', (req, res) => {
+    const botArray = Array.from(bots.entries()).map(([id, bot]) => {
+        const portfolio = portfolios.get(id);
+        const profit = portfolio ? portfolio.unrealizedGains : 0;
+        return {
+            bot_id: id,
+            name: bot.name,
+            status: bot.status,
+            registeredAt: bot.registeredAt,
+            lastHeartbeat: bot.lastHeartbeat,
+            totalOrders: bot.totalOrders,
+            filledOrders: bot.filledOrders,
+            rejectedOrders: bot.rejectedOrders,
+            winRate: bot.filledOrders + bot.rejectedOrders > 0
+                ? (bot.filledOrders / (bot.filledOrders + bot.rejectedOrders) * 100).toFixed(2) + '%'
+                : '0%',
+            currentProfit: profit,
+            profitPercentage: portfolio ? ((profit / 100000) * 100).toFixed(2) + '%' : '0%'
+        };
+    });
+    res.json({ bots: botArray });
+});
+
+// Demo bot creation helper
+app.post('/api/bot/demo', (req, res) => {
+    const botId = `bot_${botIdCounter++}`;
+    const bot = {
+        id: botId,
+        name: `DemoBot_${botIdCounter}`,
+        type: 'demo',
+        api_key: 'demo-'+Math.random().toString(36).substr(2,8),
+        description: 'Automatically generated demo bot',
+        registeredAt: new Date(),
+        lastHeartbeat: new Date(),
+        status: 'connected',
+        totalOrders: 0,
+        filledOrders: 0,
+        rejectedOrders: 0
+    };
+    bots.set(botId, bot);
+    portfolios.set(botId, {
+        cash: 100000,
+        holdings: new Map(),
+        totalValue: 100000,
+        realizedGains: 0,
+        unrealizedGains: 0
+    });
+    res.json({ success: true, bot_id: botId, name: bot.name, dashboard_url: `/bot-dashboard.html?botId=${botId}` });
 });
 
 // Get Bot Statistics
@@ -754,227 +1453,10 @@ server.listen(PORT, '0.0.0.0', () => {
     initializeMarketData();
 });
 
-// Bot Training Simulation Endpoints
-const trainingSessions = new Map();
-
-app.post('/api/bot/:botId/training/start', (req, res) => {
-    const { botId } = req.params;
-    const bot = bots.get(botId);
-    
-    if (!bot) {
-        return res.status(404).json({ error: 'Bot not found' });
-    }
-
-    // Create training session if it doesn't exist
-    if (!trainingSessions.has(botId)) {
-        trainingSessions.set(botId, {
-            isRunning: true,
-            startTime: Date.now(),
-            trades: [],
-            successfulTrades: 0,
-            failedTrades: 0
-        });
-    }
-
-    const session = trainingSessions.get(botId);
-    session.isRunning = true;
-    session.lastStartTime = Date.now();
-
-    res.json({
-        success: true,
-        message: 'Training started',
-        session: session
-    });
-
-    // Simulate trading activity every 1-3 seconds
-    simulateBotTrading(botId);
-});
-
-app.post('/api/bot/:botId/training/stop', (req, res) => {
-    const { botId } = req.params;
-    const session = trainingSessions.get(botId);
-
-    if (session) {
-        session.isRunning = false;
-    }
-
-    res.json({
-        success: true,
-        message: 'Training stopped'
-    });
-});
-
-app.post('/api/bot/:botId/training/reset', (req, res) => {
-    const { botId } = req.params;
-    
-    // Reset portfolio
-    portfolios.set(botId, {
-        cash: 100000,
-        holdings: new Map(),
-        totalValue: 100000,
-        realizedGains: 0,
-        unrealizedGains: 0
-    });
-
-    // Reset session
-    trainingSessions.delete(botId);
-
-    res.json({
-        success: true,
-        message: 'Training session reset'
-    });
-});
-
-app.get('/api/bot/:botId/training/stats', (req, res) => {
-    const { botId } = req.params;
-    const portfolio = portfolios.get(botId);
-    const session = trainingSessions.get(botId);
-
-    if (!portfolio) {
-        return res.status(404).json({ error: 'Portfolio not found' });
-    }
-
-    // Calculate portfolio value
-    let totalValue = portfolio.cash;
-    let holdingsValue = 0;
-    const holdings = [];
-
-    portfolio.holdings.forEach((holding) => {
-        const market = marketData.get(holding.symbol);
-        const currentPrice = market ? market.price : 0;
-        const currentValue = currentPrice * holding.quantity;
-        holdingsValue += currentValue;
-        totalValue += currentValue;
-
-        holdings.push({
-            symbol: holding.symbol,
-            quantity: holding.quantity,
-            price: currentPrice,
-            value: currentValue,
-            gainLoss: currentValue - holding.costBasis
-        });
-    });
-
-    // Get recent trades
-    const botTrades = Array.from(orders.values())
-        .filter(o => o.bot_id === botId)
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    const stats = {
-        botId: botId,
-        cash: portfolio.cash,
-        totalValue: totalValue,
-        holdingsValue: holdingsValue,
-        holdings: holdings,
-        recentTrades: botTrades.slice(0, 50).map(t => ({
-            action: t.action.toUpperCase(),
-            symbol: t.symbol,
-            quantity: t.quantity,
-            price: t.price,
-            timestamp: t.createdAt,
-            status: t.status
-        })),
-        totalTrades: botTrades.length,
-        successfulTrades: botTrades.filter(t => t.status === 'filled').length,
-        failedTrades: botTrades.filter(t => t.status === 'rejected').length,
-        isTraining: session ? session.isRunning : false
-    };
-
-    res.json(stats);
-});
-
-function simulateBotTrading(botId) {
-    const session = trainingSessions.get(botId);
-    if (!session || !session.isRunning) return;
-
-    // Get random stock from market and make a trade decision
-    const randomInterval = setInterval(async () => {
-        if (!session || !session.isRunning) {
-            clearInterval(randomInterval);
-            return;
-        }
-
-        try {
-            const allMarkets = Array.from(marketData.values());
-            const randomStock = allMarkets[Math.floor(Math.random() * allMarkets.length)];
-            const portfolio = portfolios.get(botId);
-            const shouldBuy = Math.random() > 0.5;
-
-            if (shouldBuy) {
-                // Try to buy
-                const quantity = Math.floor(Math.random() * 10) + 1;
-                const cost = randomStock.price * quantity;
-
-                if (portfolio.cash >= cost) {
-                    // Execute buy
-                    portfolio.cash -= cost;
-                    const holding = portfolio.holdings.get(randomStock.symbol);
-                    if (holding) {
-                        holding.quantity += quantity;
-                        holding.costBasis += cost;
-                    } else {
-                        portfolio.holdings.set(randomStock.symbol, {
-                            symbol: randomStock.symbol,
-                            quantity: quantity,
-                            costBasis: cost,
-                            currentPrice: randomStock.price
-                        });
-                    }
-
-                    const orderId = `order_${orderIdCounter++}`;
-                    orders.set(orderId, {
-                        id: orderId,
-                        bot_id: botId,
-                        symbol: randomStock.symbol,
-                        action: 'buy',
-                        quantity: quantity,
-                        price: randomStock.price,
-                        status: 'filled',
-                        createdAt: new Date(),
-                        filledAt: new Date()
-                    });
-
-                    session.successfulTrades++;
-                    broadcastOrderUpdate(orderId, orders.get(orderId));
-                }
-            } else {
-                // Try to sell
-                const holdings = Array.from(portfolio.holdings.values());
-                if (holdings.length > 0) {
-                    const holding = holdings[Math.floor(Math.random() * holdings.length)];
-                    const quantity = Math.min(
-                        Math.floor(Math.random() * holding.quantity) + 1,
-                        holding.quantity
-                    );
-
-                    portfolio.cash += holding.currentPrice * quantity;
-                    holding.quantity -= quantity;
-                    if (holding.quantity === 0) {
-                        portfolio.holdings.delete(holding.symbol);
-                    }
-
-                    const orderId = `order_${orderIdCounter++}`;
-                    orders.set(orderId, {
-                        id: orderId,
-                        bot_id: botId,
-                        symbol: holding.symbol,
-                        action: 'sell',
-                        quantity: quantity,
-                        price: holding.currentPrice,
-                        status: 'filled',
-                        createdAt: new Date(),
-                        filledAt: new Date()
-                    });
-
-                    session.successfulTrades++;
-                    broadcastOrderUpdate(orderId, orders.get(orderId));
-                }
-            }
-        } catch (e) {
-            console.error('[Training] Simulation error:', e);
-        }
-    }, Math.random() * 2000 + 1000); // Random interval between 1-3 seconds
-}
+/**
+ * Note: Backtesting and Notification endpoints are defined above in the main API section
+ * Bot Training endpoints have been replaced with new /api/bot/:botId/* endpoints
+ */
 
 // Graceful shutdown
 process.on('SIGINT', () => {

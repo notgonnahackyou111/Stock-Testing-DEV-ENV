@@ -101,8 +101,8 @@ class EnhancedSimulator {
             const typeVolatility = stock.type === 'bond' ? 0.002 : stock.volatility;
             
             // Random walk with drift
-            // reduce randomness to produce smoother, more market-like curves
-            const randomChange = (Math.random() - 0.5) * typeVolatility * previousPrice * timeSkipMultiplier * 0.5;
+            // Increased volatility multiplier from 0.5 to 1.0 for larger price swings
+            const randomChange = (Math.random() - 0.5) * typeVolatility * previousPrice * timeSkipMultiplier;
             // gentle overall upward drift
             const drift = previousPrice * 0.00005 * timeSkipMultiplier;
             
@@ -115,11 +115,14 @@ class EnhancedSimulator {
                 momentum = lastChange * 0.3;
             }
 
-            // Occasional news spike/gap for realism
+            // Occasional news spike/gap for realism - increased from 10% to 20% range
             let spike = 1;
-            if (Math.random() < 0.01) {
-                // 1% chance of a gap: +/- up to 10%
-                spike += (Math.random() - 0.5) * 0.2;
+            if (Math.random() < 0.005) {
+                // 0.5% chance of a big gap: +/- up to 20% (like real stock market events)
+                spike += (Math.random() - 0.5) * 0.4;
+            } else if (Math.random() < 0.02) {
+                // 2% chance of a smaller gap: +/- up to 5%
+                spike += (Math.random() - 0.5) * 0.1;
             }
             
             stock.price = Math.max(previousPrice * spike + randomChange + drift + momentum, 0.01);

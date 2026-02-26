@@ -196,9 +196,9 @@ function renderStocks() {
             card.classList.add('selected');
         }
 
-        // Calculate price change (from 20 days ago or start)
+        // Calculate price change (from previous bar, same as trading panel)
         const history = simulator.getPriceHistory(stock.symbol);
-        const prevPrice = history.length > 20 ? history[history.length - 20] : history[0];
+        const prevPrice = history.length > 1 ? history[history.length - 2] : history[0];
         const change = stock.price - prevPrice;
         const changePercent = ((change / prevPrice) * 100).toFixed(2);
         const changeClass = change >= 0 ? 'up' : 'down';
@@ -704,18 +704,34 @@ function updateModeStats() {
 // Open export modal and generate a save code
 async function openExportModal() {
     try {
+        if (!simulator || !gameConfig) {
+            alert('No active game! Start a game first before exporting.');
+            return;
+        }
+        
         // Create a new save code on the server
-        const response = await fetch('/api/saves/create', {
+        const createResponse = await fetch('/api/saves/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
 
-        if (!response.ok) throw new Error('Failed to create save code');
-        const data = await response.json();
+        if (!createResponse.ok) {
+            const errData = await createResponse.text();
+            throw new Error(`Failed to create save code: ${createResponse.status} - ${errData}`);
+        }
+        
+        const data = await createResponse.json();
         const saveCode = data.code;
+        console.log(`[Export] Created save code: ${saveCode}`);
 
         // Save the current game state with the code
         const gameState = getCurrentState();
+        if (!gameState) {
+            throw new Error('Failed to get current game state');
+        }
+        
+        console.log(`[Export] Saving state with ${gameState.simulator ? Object.keys(gameState.simulator).length : 0} simulator properties`);
+        
         const saveResponse = await fetch(`/api/saves/${saveCode}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -725,7 +741,13 @@ async function openExportModal() {
             })
         });
 
-        if (!saveResponse.ok) throw new Error('Failed to save game state');
+        if (!saveResponse.ok) {
+            const errData = await saveResponse.text();
+            throw new Error(`Failed to save game state: ${saveResponse.status} - ${errData}`);
+        }
+        
+        const saveData = await saveResponse.json();
+        console.log(`[Export] Successfully saved:`, saveData);
 
         // Display the modal with the code
         currentSaveCode = saveCode;
@@ -734,7 +756,7 @@ async function openExportModal() {
         document.getElementById('copyFeedback').style.display = 'none';
     } catch (error) {
         console.error('Export failed:', error);
-        alert('Failed to export game. Please try again.');
+        alert(`Export failed: ${error.message}. Check console for details.`);
     }
 }
 
@@ -780,9 +802,13 @@ function closeImportModal() {
 // Load presets for a save code
 async function loadPresetsForCode(code) {
     try {
+        console.log(`[Import] Loading presets for code: ${code}`);
+        
         const response = await fetch(`/api/saves/${code.toUpperCase()}`);
         
         if (!response.ok) {
+            const errText = await response.text();
+            console.error('Preset load failed:', response.status, errText);
             document.getElementById('importError').textContent = 'Save code not found. Please check and try again.';
             document.getElementById('importError').style.display = 'block';
             document.getElementById('presetsList').innerHTML = '';
@@ -791,6 +817,7 @@ async function loadPresetsForCode(code) {
 
         const data = await response.json();
         const presets = data.presets || [];
+        console.log(`[Import] Found ${presets.length} presets`);
 
         if (presets.length === 0) {
             document.getElementById('importError').textContent = 'No saved data found for this code.';
@@ -816,7 +843,7 @@ async function loadPresetsForCode(code) {
         return true;
     } catch (error) {
         console.error('Failed to load presets:', error);
-        document.getElementById('importError').textContent = 'Error loading preset data.';
+        document.getElementById('importError').textContent = `Error loading preset data: ${error.message}`;
         document.getElementById('importError').style.display = 'block';
         return false;
     }
@@ -893,40 +920,66 @@ function promptImport() {
 
 function loadState(state) {
     if (!state) return;
-    if (state.config) {
-        gameConfig = state.config;
-        window.gameConfig = gameConfig;
-    }
-    if (state.simulator) {
-        const sim = new EnhancedSimulator(gameConfig);
-        Object.assign(sim, state.simulator);
-        sim.simulatedTime = new Date(state.simulator.simulatedTime);
-        simulator = sim;
-        window.simulator = sim;
-    }
+    
+    try {
+        if (state.config) {
+            gameConfig = state.config;
+            window.gameConfig = gameConfig;
+        }
+        
+        if (state.simulator) {
+            // Create a fresh simulator with the saved config
+            const sim = new EnhancedSimulator(state.simulator.config);
+            
+            // Copy over all the saved properties
+            sim.portfolio = state.simulator.portfolio;
+            sim.stocks = state.simulator.stocks;
+            sim.priceHistory = state.simulator.priceHistory;
+            sim.trades = state.simulator.trades;
+            sim.modeState = state.simulator.modeState;
+            sim.startTime = state.simulator.startTime;
+            sim.initialCapital = state.simulator.initialCapital;
+            sim.dailyStats = state.simulator.dailyStats || [];
+            
+            // Restore the date properly
+            sim.simulatedTime = new Date(state.simulator.simulatedTime);
+            
+            simulator = sim;
+            window.simulator = sim;
+            
+            console.log('[Load] Game state loaded successfully');
+        }
 
-    // refresh UI
-    renderStocks();
-    updateDisplay();
-    if (simulator) startPriceUpdates();
+        // refresh UI
+        renderStocks();
+        updateDisplay();
+        if (simulator) startPriceUpdates();
+    } catch (error) {
+        console.error('[Load] Failed to load state:', error);
+        alert(`Failed to load game: ${error.message}`);
+    }
 }
 
 /**
  * Get the current game state for saving
  */
 function getCurrentState() {
+    if (!simulator) return null;
+    
     return {
         config: gameConfig,
-        simulator: simulator ? {
+        simulator: {
+            config: simulator.config,
             portfolio: simulator.portfolio,
             stocks: simulator.stocks,
             priceHistory: simulator.priceHistory,
-            simulatedTime: simulator.simulatedTime,
+            simulatedTime: simulator.simulatedTime.toISOString(), // Convert to ISO string for JSON serialization
             trades: simulator.trades,
             modeState: simulator.modeState,
             startTime: simulator.startTime,
-            initialCapital: simulator.initialCapital
-        } : null
+            initialCapital: simulator.initialCapital,
+            dailyStats: simulator.dailyStats
+        }
     };
 }
 

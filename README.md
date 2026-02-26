@@ -1,8 +1,8 @@
-# 📈 Stock Testing Platform v1.0
+# 📈 Stock Testing Platform v1.83.00
 
 A comprehensive, professional-grade stock market simulation platform for safely testing trading strategies and integrating automated trading bots without financial risk.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/notgonnahackyou111/Stock-Testing-DEV-ENV)
+[![Version](https://img.shields.io/badge/version-1.83.00-blue.svg)](https://github.com/notgonnahackyou111/Stock-Testing-DEV-ENV)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D14.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Status](https://img.shields.io/badge/status-Production%20Ready-success.svg)](#)
@@ -12,16 +12,17 @@ A comprehensive, professional-grade stock market simulation platform for safely 
 ## ✨ Key Features
 
 ### 🎮 Core Trading Platform
-- **95+ Real Stocks** - Tech giants, dividend stocks, ETFs, bonds, emerging markets
-- **Real-Time Price Updates** - Realistic market simulation with volatility and momentum
+- **135+ Real Stocks** - Tech giants, dividend stocks, ETFs, bonds, biotech, fintech, utilities, and more
+- **Real-Time Price Updates** - Realistic market simulation with enhanced volatility (±20% daily swings possible)
 - **Professional Charts** - Interactive price charts with technical indicators (20/50-day MAs)
 - **Stock Analytics** - 52-week range, market cap, trading volume, stock type classification
 - **Portfolio Tracking** - Real-time P&L, holdings breakdown, cost basis analysis
+- **Export/Import Save System** - Generate unique save codes and restore complete game sessions with all trades at any time
 - **Multiple Game Modes** - Portfolio Building, Day Trader, Challenge Mode, Classic Trading
 - **Optional Day Counter** - track the number of simulated days; toggleable via options
 - **Starting Capital Cap** - maximum $1,000,000 (slider enforces this)
 - **Custom Challenge Mode** - start with $10,000 and set your own week limit (other settings are ignored)
-- **Debug Panel & Save/Load** - toggleable in the trading screen; export your session to JSON or import a previous one
+- **Debug Panel & State Management** - toggleable debugger for state inspection and manual updates
 - **Difficulty Levels** - Easy, Medium, Hard with adjustable volatility and starting capital
 - **Risk Levels** - Conservative (0.5x), Moderate (1.0x), Aggressive (1.8x)
 - **Time Acceleration** - 1x-10x speed simulation, pause/resume controls
@@ -194,23 +195,26 @@ clock; the URL will be `http://<host>:<port>` (or your custom domain).
 Stock-Testing-DEV-ENV/
 ├── index.html                    # Home page with 4 buttons
 ├── options.html                  # Game configuration
-├── test.html                     # Trading interface
+├── test.html                     # Trading interface with export/import
 ├── bot-connection.html           # Bot management & API docs
+├── bot-training-dashboard.html   # Bot training interface
 ├── help.html                     # Comprehensive help guide
 ├── css/
-│   └── test.css                  # Trading interface styles (650+ lines)
+│   └── test.css                  # Trading interface styles (800+ lines)
 ├── js/
-│   ├── stocks-data.js            # 95 stock database
-│   ├── enhanced-simulator.js     # Simulation engine (322 lines)
-│   ├── test-game.js              # Trading UI logic (639 lines)
+│   ├── stocks-data.js            # 135 stock database (expanded)
+│   ├── enhanced-simulator.js     # Simulation engine with volatility (322 lines)
+│   ├── test-game.js              # Trading UI logic with export/import (750+ lines)
 │   ├── bot-api.js                # Bot API server (400+ lines)
-│   ├── market-data.js            # Real data provider NEW
-│   └── advanced-features.js      # Advanced trading features NEW
-├── server.js                     # Node.js backend server NEW
-├── package.json                  # Dependencies NEW
-├── Dockerfile                    # Docker configuration NEW
-├── docker-compose.yml            # Docker Compose setup NEW
-├── SETUP.md                      # Comprehensive setup guide NEW
+│   ├── market-data.js            # Real data provider
+│   ├── advanced-features.js      # Advanced trading features
+│   └── simulator.js              # Base simulator
+├── server.js                     # Node.js backend server with save/load API
+├── package.json                  # Dependencies
+├── Dockerfile                    # Docker configuration
+├── docker-compose.yml            # Docker Compose setup
+├── ecosystem.config.js           # PM2 configuration
+├── SETUP.md                      # Comprehensive setup guide
 ├── README.md                     # This file (updated)
 └── LICENSE
 ```
@@ -275,9 +279,45 @@ npm start
 
 ---
 
-## 🎮 Game Modes
+## 🗄️ Export/Import & Firebase Persistence
 
-### 📈 Portfolio Building
+### Cloud Save System with Unique Codes
+Export your game session to a unique alphanumeric code that you can share and import later:
+
+**Export** (💾 button):
+- Click the **Export** button during trading
+- Receive a unique 9-character save code (e.g., `ABC123XYZ`)
+- Copy code to clipboard
+- Share with friends or save for later
+
+**Import** (📥 button):
+- Click the **Import** button on the home page
+- Enter your save code
+- Select which preset to load
+- Your entire game state is restored instantly
+
+**Saved Data Includes:**
+- Complete portfolio (all holdings and cash)
+- All trades and transaction history
+- Current stock prices and market state
+- Game configuration and settings
+- Time elapsed and all stats
+
+### Firebase Cloud Storage
+All saves are automatically stored in **Firebase Firestore** for permanent persistence:
+- ✅ Saves survive server restarts
+- ✅ Access your saves from any device
+- ✅ Automatic daily backups
+- ✅ Scales to millions of concurrents users
+- ✅ Works on local dev and Render production
+
+**Setup Firebase** (30 min, one-time):
+See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for complete instructions
+
+**Running Without Firebase**:
+- Server automatically falls back to temporary in-memory storage
+- Saves work normally until server restarts
+- Perfect for local testing and development
 Create a diversified portfolio with target allocations:
 - Growth stocks: 40%
 - Dividend stocks: 30%
@@ -412,6 +452,11 @@ WebSocket: ws://localhost:8000
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| POST | `/api/saves/create` | Create new save code |
+| GET | `/api/saves/:code` | Get all presets for a save code |
+| POST | `/api/saves/:code` | Save game state to preset |
+| GET | `/api/saves/:code/preset/:presetName` | Load specific preset |
+| DELETE | `/api/saves/:code/preset/:presetName` | Delete preset |
 | POST | `/api/bot/register` | Register a new trading bot |
 | GET | `/api/bot/:botId` | Get bot status |
 | POST | `/api/bot/:botId/disconnect` | Disconnect bot |
@@ -421,6 +466,31 @@ WebSocket: ws://localhost:8000
 | GET | `/api/bot/:botId/stats` | Get bot performance statistics |
 | GET | `/api/bot/:botId/orders` | Get order history |
 | WS | `/` | WebSocket for real-time updates |
+
+### Example: Create Save Code
+```bash
+curl -X POST http://localhost:8000/api/saves/create
+# Response: {"success": true, "code": "ABC123XYZ", "storage": "Firebase"}
+```
+
+### Example: Save Game State
+```bash
+curl -X POST http://localhost:8000/api/saves/ABC123XYZ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "gameState": {
+      "config": {"startingCapital": 50000},
+      "simulator": {"portfolio": {"cash": 50000}}
+    },
+    "presetName": "default"
+  }'
+```
+
+### Example: Load Game State
+```bash
+curl http://localhost:8000/api/saves/ABC123XYZ/preset/default
+# Returns complete game state with all trades and holdings
+```
 
 ### Example: Place Order
 ```bash
@@ -444,18 +514,14 @@ curl "http://localhost:8000/api/portfolio?bot_id=bot_1"
 
 ## 📊 Stock Database
 
-### 95+ Companies Across 6 Categories
+### 135+ Companies Across 4 Main Categories
 
 | Category | Count | Examples |
 |----------|-------|----------|
-| **Growth** | 10 | AAPL, MSFT, NVDA, GOOGL, AMZN |
-| **Dividend** | 18 | JNJ, PG, KO, PEP, WMT |
-| **Energy** | 6 | XOM, CVX, SLB, EOG, MPC |
-| **Healthcare** | 10 | JNJ, PFE, UNH, ABBV, LLY |
-| **Semiconductors** | 11 | NVDA, INTC, AMD, QCOM, TSM |
-| **Retail** | 10 | AMZN, WMT, HD, TGT, COST |
-| **ETFs & Bonds** | 10 | SPY, QQQ, IWM, TLT, BND |
-| **Emerging** | 20 | BABA, JD, TCEHY, ASHR, GDS |
+| **Growth Stocks** | 60 | AAPL, MSFT, NVDA, GOOGL, AMZN, TSLA, META, CRM, DKNG, SNAP, ABNB, DASH, SPOT, PINS, ZM, RBLX, EXAS, REGN, BIIB, VRTX |
+| **Dividend Stocks** | 45 | JNJ, PG, KO, PEP, WMT, XOM, CVX, UNH, ABBV, LLY, MAR, HLT, RCL, CCL, SBUX, WDAY, CROX, PYPL, STO, ETSY |
+| **ETFs** | 15 | SPY, QQQ, IWM, DIA, VTI, VOO, SCHX, VYM, NOBL, DGRO, AGG, VGIT, VGSH, BND, BNDX |
+| **Bonds & Commodities** | 15 | TLT, IEF, HYG, VWOB, GLD, USO, FCX, RIO, NEM, AWK, WCN, KMI, EPD, LYB, CORE |
 
 ---
 
@@ -564,14 +630,33 @@ Click the **"Help"** button on the home page for:
 ## 🔧 Configuration
 
 ### Environment Variables
+
+**Firebase (Optional - for persistent saves)**:
+```bash
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_PRIVATE_KEY=your-private-key
+FIREBASE_CLIENT_EMAIL=your-client-email
+FIREBASE_DATABASE_URL=https://your-project.firebaseio.com
+```
+
+**Server Configuration**:
 ```bash
 PORT=8000
 NODE_ENV=development|production
+```
+
+**Market Data Providers (Optional)**:
+```bash
 MARKET_DATA_PROVIDER=alphaVantage|iexCloud|polygon
 ALPHA_VANTAGE_API_KEY=***
 IEX_CLOUD_API_KEY=***
 POLYGON_API_KEY=***
 ```
+
+**Setup Instructions**:
+- Copy `.env.example` to `.env`
+- Fill in Firebase credentials ([FIREBASE_SETUP.md](FIREBASE_SETUP.md) guide)
+- Or run without Firebase for in-memory demo mode
 
 ### Game Settings
 Customize in `options.html`:
@@ -590,16 +675,23 @@ Customize in `options.html`:
 - ✅ No real market hours (24/7 trading)
 - ✅ No slippage or commissions (simple execution)
 - ✅ No options trading (stocks only)
-- ✅ Browser-based storage (no central database)
+
+### Implemented Features ✅
+- ✅ **Database persistence** (Firebase Firestore)
+- ✅ **Export/Import save system** with unique codes
+- ✅ **135+ stocks** across growth, dividend, ETF, and bond categories
+- ✅ **Enhanced price volatility** with realistic daily swings (±20% possible)
+- ✅ **Price display consistency** between grid and trading panel
 
 ### Planned Features
-- [ ] Database persistence (PostgreSQL/MongoDB)
+- [ ] User accounts & authentication
 - [ ] Leaderboard competitions
 - [ ] Advanced charting (Tradingview-style)
 - [ ] Strategy backtesting engine
-- [ ] Mobile app (React Native)
+- [ ] Mobile app (Flutter)
 - [ ] Paper trading tournaments
 - [ ] Real broker integration (Alpaca, TD Ameritrade)
+- [ ] Bot strategy marketplace
 
 ---
 
@@ -631,6 +723,7 @@ for any purpose, commercial or non-commercial.
 
 | Version | Date | Changes |
 |---------|------|----------|
+| 1.83.00 | Feb 25, 2026 | Export/import save system with unique codes, 135 stock database, enhanced price volatility (±20% swings), fixed price display consistency, Render deployment ready |
 | 1.0.0 | Feb 12, 2026 | Production release with bot framework, advanced features, real market data |
 | 0.9.0 | Feb 10, 2026 | Bot connection interface, API documentation |
 | 0.8.0 | Feb 8, 2026 | 95 stock database, enhanced simulator |
@@ -666,7 +759,7 @@ Made with ❤️ for traders and developers.
 
 ```
 ---
-Last Updated: February 12, 2026
-Current Version: 1.0.0
+Last Updated: February 25, 2026
+Current Version: 1.83.00
 Status: Production Ready ✅
 ```

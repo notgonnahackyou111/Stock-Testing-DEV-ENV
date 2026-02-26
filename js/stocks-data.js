@@ -138,10 +138,55 @@ const REAL_STOCKS = [
     { symbol: 'UAL', name: 'United Airlines', basePrice: 32.80, type: 'growth', volatility: 0.040 },
     
     // Gaming & Entertainment
-    { symbol: 'NVDA', name: 'NVIDIA (Gaming)', basePrice: 875.45, type: 'growth', volatility: 0.035 },
+    { symbol: 'MSFT', name: 'Microsoft (Gaming)', basePrice: 375.20, type: 'growth', volatility: 0.016 },
     { symbol: 'EA', name: 'Electronic Arts', basePrice: 155.80, type: 'growth', volatility: 0.028 },
     { symbol: 'TAKE', name: 'Take-Two Interactive', basePrice: 185.40, type: 'growth', volatility: 0.030 },
-    { symbol: 'ATVI', name: 'Activision Blizzard', basePrice: 92.60, type: 'growth', volatility: 0.032 }
+    { symbol: 'ATVI', name: 'Activision Blizzard', basePrice: 92.60, type: 'growth', volatility: 0.032 },
+    
+    // Biotech & Life Sciences
+    { symbol: 'EXAS', name: 'Exact Sciences', basePrice: 68.40, type: 'growth', volatility: 0.044 },
+    { symbol: 'REGN', name: 'Regeneron Pharma', basePrice: 795.20, type: 'growth', volatility: 0.026 },
+    { symbol: 'BIIB', name: 'Biogen Inc.', basePrice: 225.50, type: 'growth', volatility: 0.028 },
+    { symbol: 'VRTX', name: 'Vertex Pharma', basePrice: 495.80, type: 'growth', volatility: 0.024 },
+    { symbol: 'CRSP', name: 'CRISPR Therapeutics', basePrice: 118.40, type: 'growth', volatility: 0.048 },
+    
+    // FinTech & Payment
+    { symbol: 'PYPL', name: 'PayPal Holdings', basePrice: 68.30, type: 'growth', volatility: 0.036 },
+    { symbol: 'MA', name: 'Mastercard Inc.', basePrice: 475.20, type: 'growth', volatility: 0.018 },
+    { symbol: 'V', name: 'Visa Inc.', basePrice: 275.60, type: 'growth', volatility: 0.016 },
+    { symbol: 'AXP', name: 'American Express', basePrice: 225.40, type: 'dividend', volatility: 0.015 },
+    { symbol: 'STO', name: 'Santander SA', basePrice: 45.60, type: 'dividend', volatility: 0.016 },
+    
+    // E-Commerce & Logistics
+    { symbol: 'ZM', name: 'Zoom Video Comms', basePrice: 45.80, type: 'growth', volatility: 0.032 },
+    { symbol: 'ETSY', name: 'Etsy Inc.', basePrice: 78.40, type: 'growth', volatility: 0.034 },
+    { symbol: 'MKTX', name: 'MarketAxess', basePrice: 325.80, type: 'growth', volatility: 0.020 },
+    { symbol: 'JKHY', name: 'Jack Henry & Assoc', basePrice: 195.40, type: 'dividend', volatility: 0.012 },
+    
+    // Hotels & Travel
+    { symbol: 'MAR', name: 'Marriott Intl', basePrice: 285.60, type: 'dividend', volatility: 0.022 },
+    { symbol: 'HLT', name: 'Hilton Worldwide', basePrice: 195.40, type: 'dividend', volatility: 0.020 },
+    { symbol: 'RCL', name: 'Royal Caribbean', basePrice: 115.80, type: 'growth', volatility: 0.032 },
+    { symbol: 'CCL', name: 'Carnival Corp', basePrice: 21.40, type: 'growth', volatility: 0.036 },
+    
+    // Food & Beverage
+    { symbol: 'SBUX', name: 'Starbucks Corp', basePrice: 95.20, type: 'dividend', volatility: 0.016 },
+    { symbol: 'DKNG', name: 'DraftKings Inc.', basePrice: 42.60, type: 'growth', volatility: 0.046 },
+    { symbol: 'WDAY', name: 'Workday Inc.', basePrice: 265.40, type: 'growth', volatility: 0.025 },
+    { symbol: 'CROX', name: 'Crocs Inc.', basePrice: 118.60, type: 'growth', volatility: 0.030 },
+    
+    // More Growth Stocks (Social Media, Crypto, Streaming)
+    { symbol: 'ABNB', name: 'Airbnb Inc.', basePrice: 185.40, type: 'growth', volatility: 0.035 },
+    { symbol: 'DASH', name: 'DoorDash Inc.', basePrice: 128.60, type: 'growth', volatility: 0.037 },
+    { symbol: 'SPOT', name: 'Spotify Technology', basePrice: 185.20, type: 'growth', volatility: 0.033 },
+    { symbol: 'PINS', name: 'Pinterest Inc.', basePrice: 28.40, type: 'growth', volatility: 0.040 },
+    { symbol: 'SNAP', name: 'Snap Inc.', basePrice: 22.60, type: 'growth', volatility: 0.056 },
+    
+    // Additional Tech Companies
+    { symbol: 'U', name: 'Unity Software', basePrice: 42.60, type: 'growth', volatility: 0.044 },
+    { symbol: 'RBLX', name: 'Roblox Corp', basePrice: 28.40, type: 'growth', volatility: 0.050 },
+    { symbol: 'APPN', name: 'Appian Corp', basePrice: 45.80, type: 'growth', volatility: 0.048 },
+    { symbol: 'SMAR', name: 'Smartsheet Inc.', basePrice: 42.20, type: 'growth', volatility: 0.041 },
 ];
 
 const STOCK_TYPES = {

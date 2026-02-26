@@ -139,6 +139,12 @@ DB_PORT=5432
 DB_NAME=stock_testing
 DB_USER=postgres
 DB_PASS=password
+
+# Optional initial accounts
+ADMIN_USERNAME=admin_user
+ADMIN_PASSWORD=SuperSecurePass123!
+TESTER_USERNAME=test_user
+TESTER_PASSWORD=AnotherSecurePass!
 ```
 
 ---

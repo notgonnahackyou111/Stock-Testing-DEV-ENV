@@ -8,10 +8,10 @@ This document outlines all 5 recommended improvements plus the bot simulation da
 
 ## 1. ✅ User Accounts & Authentication
 
-### Features Implemented
-- **Flexible Registration** – sign up using email or a unique username, password required
+-### Features Implemented
+- **Flexible Registration** – sign up using email or a unique username, password required (admin-provisioned only)
 - **Roles & Permissions** – users have `user`, `tester`, or `admin` roles stored in profile
-- **User Login** – authenticate with email or username plus password; returns JWT
+- **User Login** – authenticate with email or username plus password; returns JWT; only testers/admins may log in
 - **JWT Enhancements** – tokens carry `role` and identifier claims for authorization
 - **Password Hashing** – bcrypt-secured password storage
 - **User Profiles** – usernames, display names, roles, stats and preferences
@@ -30,6 +30,9 @@ This document outlines all 5 recommended improvements plus the bot simulation da
 POST   /api/auth/register       - Register new user
 POST   /api/auth/login         - Login user  (returns JWT token)
 GET    /api/auth/profile       - Get user profile (requires auth)
+GET    /api/auth/verify        - Verify JWT token validity
+GET    /api/chat/messages      - List group chat messages (tester/admin only)
+POST   /api/chat/messages      - Send a message to group chat (tester/admin only)
 ```
 
 ### Usage

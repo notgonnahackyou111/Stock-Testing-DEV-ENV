@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: stock-testing-bot
+    env: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: owner_admin
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: TESTER_USERNAME
+        value: tester_user
+      - key: TESTER_PASSWORD
+        generateValue: true
+      - key: PORT
+        value: 8000
+      - key: LOG_LEVEL
+        value: info

@@ -21,17 +21,35 @@ function initializeFirebase() {
   }
 
   try {
-    // Check if running in test/development without Firebase
-    if (!process.env.FIREBASE_PROJECT_ID) {
-      console.warn('[Firebase] FIREBASE_PROJECT_ID not set - running in demo mode (in-memory storage)');
-      return null;
+    // Allow two ways to provide credentials:
+    // 1) GOOGLE_APPLICATION_CREDENTIALS pointing to a service account JSON file
+    // 2) Individual env vars: FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL
+
+    let serviceAccount = null;
+
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      try {
+        const credsPath = path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+        serviceAccount = require(credsPath);
+        console.log('[Firebase] Using service account JSON from GOOGLE_APPLICATION_CREDENTIALS');
+      } catch (err) {
+        console.warn('[Firebase] Failed to load GOOGLE_APPLICATION_CREDENTIALS:', err.message);
+      }
     }
 
-    const serviceAccount = {
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    };
+    if (!serviceAccount && process.env.FIREBASE_PROJECT_ID) {
+      serviceAccount = {
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      };
+      console.log('[Firebase] Using service account from environment variables');
+    }
+
+    if (!serviceAccount) {
+      console.warn('[Firebase] No service account configured - running in demo mode (in-memory storage)');
+      return null;
+    }
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),

@@ -14,35 +14,74 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
+const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
 const { initializeFirebase, getDatabase, isFirebaseReady } = require('./firebase-config');
-const { verifyToken, verifyOptionalToken, generateToken } = require('./auth-middleware');
+const { verifyToken, verifyOptionalToken, generateToken, JWT_SECRET } = require('./auth-middleware');
+const jwt = require('jsonwebtoken');
 const { registerUser, loginUser, getUserProfile, updateUserStats, createAdminAccount, createTesterAccount } = require('./user-manager');
 const BacktestEngine = require('./backtest-engine');
 const notificationService = require('./notification-service');
+const { logger, httpLogger } = require('./logger');
+const { validateRequest, schemas } = require('./validation-middleware');
 
 // initialize default admin/tester from environment variables if provided
+// Seed admin/tester accounts (force-create to ensure known credentials)
 (async () => {
+    const { forceCreateUser } = require('./user-manager');
     if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD) {
         try {
-            await createAdminAccount(process.env.ADMIN_USERNAME, process.env.ADMIN_PASSWORD, 'Administrator');
-            console.log('[Init] Default admin account created or already exists');
+            await forceCreateUser({ username: process.env.ADMIN_USERNAME, password: process.env.ADMIN_PASSWORD, displayName: 'Administrator', role: 'admin' });
+            logger.info('[Init] Default admin account created/updated');
         } catch (err) {
-            console.warn('[Init] Failed to create admin account:', err.message);
+            logger.warn('[Init] Failed to create/update admin account: ' + err.message);
         }
     }
     if (process.env.TESTER_USERNAME && process.env.TESTER_PASSWORD) {
         try {
-            await createTesterAccount(process.env.TESTER_USERNAME, process.env.TESTER_PASSWORD, 'Tester');
-            console.log('[Init] Default tester account created or already exists');
+            await forceCreateUser({ username: process.env.TESTER_USERNAME, password: process.env.TESTER_PASSWORD, displayName: 'Tester', role: 'tester' });
+            logger.info('[Init] Default tester account created/updated');
         } catch (err) {
-            console.warn('[Init] Failed to create tester account:', err.message);
+            logger.warn('[Init] Failed to create/update tester account: ' + err.message);
         }
     }
 })();
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+
+// ==================== WEBSOCKET JWT VERIFICATION ====================
+const verifyWebSocketClient = (info, callback) => {
+    try {
+        const authHeader = info.req.headers.authorization;
+        const token = authHeader && authHeader.split(' ')[1];
+
+        if (!token) {
+            logger.warn('[WebSocket] Connection attempt without token');
+            return callback(false, 401, 'Unauthorized: Token required');
+        }
+
+        try {
+            const decoded = jwt.verify(token, JWT_SECRET);
+            // Attach decoded token to request for later use
+            info.req.user = decoded;
+            logger.info('[WebSocket] Client authenticated: ' + decoded.userId);
+            callback(true);
+        } catch (err) {
+            logger.warn('[WebSocket] Invalid token: ' + err.message);
+            return callback(false, 403, 'Forbidden: Invalid token');
+        }
+    } catch (err) {
+        logger.error('[WebSocket] Verification error: ' + err.message);
+        callback(false, 500, 'Internal server error');
+    }
+};
+
+const wss = new WebSocket.Server({
+    server,
+    verifyClient: verifyWebSocketClient
+});
 
 /**
  * Attempt to bind the HTTP server on one of the provided ports.
@@ -75,6 +114,67 @@ function tryListen(portIndex) {
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+app.use(httpLogger); // Structured HTTP logging
+
+// ==================== RATE LIMITING ====================
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: 'Too many requests, please try again later'
+});
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // strict limit on auth endpoints
+    skipSuccessfulRequests: true, // don't count successful requests
+    message: 'Too many login attempts, please try again later'
+});
+
+const chatLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 10, // max 10 messages per minute per IP
+    message: 'Too many messages, please slow down'
+});
+
+// Apply general rate limiter to all requests
+app.use(limiter);
+
+// ==================== SWAGGER DOCUMENTATION ====================
+const swaggerOptions = {
+    definition: {
+        openapi: '3.0.0',
+        info: {
+            title: 'Stock Testing Bot API',
+            version: '1.0.0',
+            description: 'Real-time WebSocket and REST API for trading bot connections with team chat',
+            contact: {
+                name: 'Stock Testing Team'
+            }
+        },
+        servers: [
+            {
+                url: `http://localhost:${process.env.PORT || 8000}`,
+                description: 'Development Server'
+            }
+        ],
+        components: {
+            securitySchemes: {
+                bearerAuth: {
+                    type: 'http',
+                    scheme: 'bearer',
+                    bearerFormat: 'JWT'
+                }
+            }
+        }
+    },
+    apis: ['./server.js'] // JSDoc comments in this file
+};
+
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+logger.info('API Documentation available at /api-docs');
+
+// Serve static files
 app.use(express.static(path.join(__dirname, '.')));
 
 // Configuration
@@ -197,68 +297,140 @@ async function getOrCreateSave(code) {
 // ==================== AUTHENTICATION ENDPOINTS ====================
 
 /**
- * User Registration
- * POST /api/auth/register
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Register a new user (admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               displayName:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [user, tester, admin]
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *       400:
+ *         description: Validation error
+ *       403:
+ *         description: Admin only
  */
-app.post('/api/auth/register', async (req, res) => {
-    try {
-        const { email, username, password, displayName } = req.body;
+app.post('/api/auth/register', 
+    verifyToken,
+    authLimiter,
+    validateRequest(schemas.register),
+    async (req, res) => {
+        try {
+            if (req.userRole !== 'admin') {
+                logger.warn(`[Auth] Non-admin attempted registration: ${req.userId}`);
+                return res.status(403).json({ error: 'Only admins can create accounts' });
+            }
 
-        if ((!email && !username) || !password) {
-            return res.status(400).json({
-                error: 'Email or username, and password are required'
+            const { email, username, password, displayName, role } = req.body;
+
+            const user = await registerUser({ email, username, password, displayName, role });
+            const token = generateToken(user.userId, user.email || user.username, user.role);
+
+            logger.info(`[Auth] New user registered: ${user.userId} (${user.displayName || 'unnamed'})`);
+
+            res.status(201).json({
+                success: true,
+                user,
+                token,
+                message: 'Registration successful'
+            });
+        } catch (error) {
+            logger.error(`[Auth] Registration error: ${error.message}`);
+            res.status(400).json({
+                error: error.message
             });
         }
-
-        const user = await registerUser({ email, username, password, displayName });
-        const token = generateToken(user.userId, user.email || user.username, user.role);
-
-        res.status(201).json({
-            success: true,
-            user,
-            token,
-            message: 'Registration successful'
-        });
-    } catch (error) {
-        console.error('[Auth] Registration error:', error.message);
-        res.status(400).json({
-            error: error.message
-        });
     }
-});
+);
 
 /**
- * User Login
- * POST /api/auth/login
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Login with email/username and password
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - identifier
+ *               - password
+ *             properties:
+ *               identifier:
+ *                 type: string
+ *                 description: Email or username
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *       401:
+ *         description: Invalid credentials or not authorized
  */
-app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { identifier, password } = req.body;
-        // identifier may be email or username
-        if (!identifier || !password) {
-            return res.status(400).json({
-                error: 'Identifier and password required'
+app.post('/api/auth/login', 
+    authLimiter,
+    validateRequest(schemas.login),
+    async (req, res) => {
+        try {
+            const { identifier, password } = req.body;
+
+            const result = await loginUser(identifier, password);
+
+            // only testers and admins are allowed to actually log in
+            if (result.role !== 'tester' && result.role !== 'admin') {
+                logger.warn(`[Auth] Non-authorized login attempt for ${result.userId}`);
+                return res.status(403).json({ error: 'Not authorized' });
+            }
+
+            logger.info(`[Auth] User logged in: ${result.userId}`);
+
+            res.json({
+                success: true,
+                ...result,
+                message: 'Login successful'
+            });
+        } catch (error) {
+            logger.error(`[Auth] Login error: ${error.message}`);
+            res.status(401).json({
+                error: error.message
             });
         }
-
-        const result = await loginUser(identifier, password);
-
-        res.json({
-            success: true,
-            ...result,
-            message: 'Login successful'
-        });
-    } catch (error) {
-        console.error('[Auth] Login error:', error.message);
-        res.status(401).json({
-            error: error.message
-        });
     }
-});
+);
 
 /**
- * Get User Profile
- * GET /api/auth/profile
+ * @swagger
+ * /api/auth/profile:
+ *   get:
+ *     summary: Get user profile
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User profile retrieved
+ *       404:
+ *         description: User not found
  */
 app.get('/api/auth/profile', verifyToken, async (req, res) => {
     try {
@@ -269,7 +441,7 @@ app.get('/api/auth/profile', verifyToken, async (req, res) => {
             user
         });
     } catch (error) {
-        console.error('[Auth] Profile fetch error:', error.message);
+        logger.error(`[Auth] Profile fetch error for ${req.userId}: ${error.message}`);
         res.status(404).json({
             error: error.message
         });
@@ -520,58 +692,41 @@ app.post('/api/bot/:botId/reset', (req, res) => {
 });
 
 // Health check
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check endpoint
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ */
 app.get('/health', (req, res) => {
+    const uptime = process.uptime();
+    const memoryUsage = process.memoryUsage();
+    
     res.json({
         status: 'ok',
         version: API_VERSION,
         timestamp: new Date(),
+        uptime: Math.floor(uptime),
         storage: useFirebase ? 'Firebase' : 'In-Memory (Demo Mode)',
-        firebaseStatus: useFirebase ? 'Connected' : 'Not Configured'
+        firebaseStatus: useFirebase ? 'Connected' : 'Not Configured',
+        memory: {
+            heapUsed: (memoryUsage.heapUsed / 1024 / 1024).toFixed(2) + ' MB',
+            heapTotal: (memoryUsage.heapTotal / 1024 / 1024).toFixed(2) + ' MB'
+        },
+        websockets: wss.clients.size
     });
 });
 
-/**
- * Authentication Endpoints
- */
+// NOTE: Legacy auth endpoints were previously defined here. They have been
+// moved higher in the file to support usernames and roles, so this duplicate
+// block was removed to avoid confusion.
 
-// Register new user
-app.post('/api/auth/register', async (req, res) => {
-    try {
-        const { email, username, password } = req.body;
-        const result = await registerUser(email, username, password);
-        res.status(201).json({
-            success: true,
-            message: 'User registered successfully',
-            user: result.user,
-            token: result.token
-        });
-    } catch (error) {
-        res.status(400).json({
-            error: error.message
-        });
-    }
-});
 
-// Login user
-app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        const result = await loginUser(email, password);
-        res.json({
-            success: true,
-            message: 'Login successful',
-            user: result.user,
-            token: result.token
-        });
-    } catch (error) {
-        res.status(401).json({
-            error: error.message
-        });
-    }
-});
-
-// Verify token
-app.post('/api/auth/verify', (req, res) => {
+// Verify token endpoint (clients can use this to validate an existing JWT)
+app.post('/api/auth/verify', async (req, res) => {
     try {
         const authHeader = req.headers['authorization'];
         const token = authHeader && authHeader.split(' ')[1];
@@ -580,12 +735,14 @@ app.post('/api/auth/verify', (req, res) => {
             return res.status(401).json({ error: 'Token required' });
         }
 
-        const decoded = verifyToken(token);
-        if (!decoded) {
+        let decoded;
+        try {
+            decoded = jwt.verify(token, JWT_SECRET);
+        } catch (err) {
             return res.status(403).json({ error: 'Invalid or expired token' });
         }
 
-        const user = getUserById(decoded.userId);
+        const user = await getUserProfile(decoded.userId);
         res.json({
             valid: true,
             user: user
@@ -594,6 +751,128 @@ app.post('/api/auth/verify', (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// ==================== CHAT ENDPOINTS ====================
+
+/**
+ * @swagger
+ * /api/chat/messages:
+ *   get:
+ *     summary: Get team chat messages (with pagination)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number (1-based)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Messages per page
+ *     responses:
+ *       200:
+ *         description: Messages retrieved successfully
+ *       403:
+ *         description: Access forbidden
+ */
+app.get('/api/chat/messages', verifyToken, async (req, res) => {
+    try {
+        if (req.userRole !== 'tester' && req.userRole !== 'admin') {
+            logger.warn(`[Chat] Unauthorized access attempt from ${req.userId}`);
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        // Pagination parameters
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+        const offset = (page - 1) * limit;
+
+        const { getMessages } = require('./chat-manager');
+        const { messages, total } = await getMessages(limit, offset);
+
+        logger.http(`[Chat] Fetched ${messages.length} messages for ${req.userId}`);
+
+        res.json({
+            success: true,
+            messages,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit)
+            }
+        });
+    } catch (error) {
+        logger.error(`[Chat] Fetch error: ${error.message}`);
+        res.status(500).json({ error: 'Failed to fetch messages' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/chat/messages:
+ *   post:
+ *     summary: Send a chat message
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               text:
+ *                 type: string
+ *                 description: Message content (max 2000 chars)
+ *     responses:
+ *       201:
+ *         description: Message posted successfully
+ *       400:
+ *         description: Validation error
+ *       403:
+ *         description: Access forbidden
+ */
+app.post('/api/chat/messages', 
+    verifyToken, 
+    chatLimiter, 
+    validateRequest(schemas.chatMessage),
+    async (req, res) => {
+        try {
+            if (req.userRole !== 'tester' && req.userRole !== 'admin') {
+                logger.warn(`[Chat] Unauthorized post attempt from ${req.userId}`);
+                return res.status(403).json({ error: 'Forbidden' });
+            }
+
+            const { text } = req.body;
+            const { addMessage } = require('./chat-manager');
+            const msg = await addMessage(req.userId, text);
+
+            // Broadcast the new chat message to all connected WebSocket clients
+            try {
+                const payload = JSON.stringify({ type: 'chat', message: msg });
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(payload);
+                    }
+                });
+            } catch (bcastErr) {
+                logger.error(`[Chat] WebSocket broadcast error: ${bcastErr.message}`);
+            }
+
+            logger.info(`[Chat] Message posted by ${req.userId}`);
+            res.status(201).json({ success: true, message: msg });
+        } catch (error) {
+            logger.error(`[Chat] Post error: ${error.message}`);
+            res.status(500).json({ error: 'Failed to post message' });
+        }
+    }
+);
 
 /**
  * Game Save/Load Endpoints
@@ -1276,9 +1555,10 @@ app.get('/api/bot/:botId/orders', (req, res) => {
  * WebSocket Handlers
  */
 
-wss.on('connection', (ws) => {
-    console.log('Client connected');
+wss.on('connection', (ws, req) => {
+    const userId = req.user?.userId || 'unknown';
     const clientId = Math.random().toString(36).substr(2, 9);
+    logger.info(`[WebSocket] Client connected: ${clientId} (${userId})`);
 
     // Handle incoming messages
     ws.on('message', (message) => {
@@ -1299,14 +1579,18 @@ wss.on('connection', (ws) => {
                     ws.send(JSON.stringify({ error: 'Unknown message type' }));
             }
         } catch (error) {
-            console.error('WebSocket error:', error);
+            logger.error(`[WebSocket] Message handling error: ${error.message}`);
             ws.send(JSON.stringify({ error: 'Invalid message format' }));
         }
     });
 
     ws.on('close', () => {
-        console.log('Client disconnected');
+        logger.info(`[WebSocket] Client disconnected: ${clientId}`);
         subscriptions.delete(clientId);
+    });
+
+    ws.on('error', (err) => {
+        logger.error(`[WebSocket] Client error (${clientId}): ${err.message}`);
     });
 });
 
@@ -1395,18 +1679,24 @@ setInterval(() => {
 }, 5000);
 
 /**
- * Error Handling
+ * Error Handling Middleware
  */
 
+// Global error handler for Express errors
 app.use((err, req, res, next) => {
-    console.error('Server error:', err);
-    res.status(500).json({
+    logger.error(`[Error] ${req.method} ${req.path} - ${err.message}`);
+    
+    // Send consistent error response
+    res.status(err.status || 500).json({
         error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+        message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+        requestId: req.id
     });
 });
 
+// 404 handler
 app.use((req, res) => {
+    logger.warn(`[404] ${req.method} ${req.path}`);
     res.status(404).json({
         error: 'Endpoint not found',
         path: req.path,
@@ -1419,7 +1709,7 @@ app.use((req, res) => {
  */
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`
+    logger.info(`
     ╔══════════════════════════════════════════════╗
     ║     Stock Testing Bot API Server v${API_VERSION}      ║
     ║          Running on port ${PORT}                  ║
@@ -1427,9 +1717,15 @@ server.listen(PORT, '0.0.0.0', () => {
     
     REST API: http://localhost:${PORT}/api
     WebSocket: ws://localhost:${PORT}
+    API Docs: http://localhost:${PORT}/api-docs
     Health Check: http://localhost:${PORT}/health
     
     Available endpoints:
+    ✓ POST   /api/auth/register (admin only)
+    ✓ POST   /api/auth/login (tester/admin)
+    ✓ GET    /api/auth/profile
+    ✓ POST   /api/chat/messages (rate limited)
+    ✓ GET    /api/chat/messages (paginated)
     ✓ POST   /api/saves/create
     ✓ GET    /api/saves/:code
     ✓ POST   /api/saves/:code
@@ -1443,31 +1739,54 @@ server.listen(PORT, '0.0.0.0', () => {
     ✓ GET    /api/portfolio
     ✓ GET    /api/bot/:botId/stats
     ✓ GET    /api/bot/:botId/orders
-    ✓ POST   /api/bot/:botId/training/start
-    ✓ POST   /api/bot/:botId/training/stop
-    ✓ POST   /api/bot/:botId/training/reset
-    ✓ GET    /api/bot/:botId/training/stats
-    ✓ WS     (WebSocket for real-time updates)
+    ✓ WS     (WebSocket for real-time updates - JWT required)
     `);
 
     initializeMarketData();
 });
 
 /**
- * Note: Backtesting and Notification endpoints are defined above in the main API section
- * Bot Training endpoints have been replaced with new /api/bot/:botId/* endpoints
+ * Graceful Shutdown Handlers
  */
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-    console.log('\nShutting down gracefully...');
-    wss.clients.forEach((client) => {
-        client.close();
-    });
+const shutdown = (signal) => {
+    logger.info(`[Shutdown] Received ${signal}, shutting down gracefully...`);
+    
+    // Stop accepting new connections
     server.close(() => {
-        console.log('Server closed');
-        process.exit(0);
+        logger.info('[Shutdown] HTTP server closed');
     });
+    
+    // Close all WebSocket connections
+    wss.clients.forEach((client) => {
+        client.close(1000, 'Server shutting down');
+    });
+    
+    // Force exit after 10 seconds
+    setTimeout(() => {
+        logger.error('[Shutdown] Forced exit after timeout');
+        process.exit(1);
+    }, 10000);
+    
+    // Handle in-flight requests with a timeout
+    setTimeout(() => {
+        logger.info('[Shutdown] All connections closed');
+        process.exit(0);
+    }, 5000);
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+    logger.error('[UncaughtException] ' + err.message);
+    process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error(`[UnhandledRejection] Promise: ${promise}, Reason: ${reason}`);
 });
 
 module.exports = { app, server, wss };

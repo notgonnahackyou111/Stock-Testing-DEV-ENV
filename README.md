@@ -1,8 +1,8 @@
-# 📈 Stock Testing Platform v1.83.00
+# 📈 Stock Testing Platform v2.00.00
 
 A comprehensive, professional-grade stock market simulation platform for safely testing trading strategies and integrating automated trading bots without financial risk.
 
-[![Version](https://img.shields.io/badge/version-1.83.00-blue.svg)](https://github.com/notgonnahackyou111/Stock-Testing-DEV-ENV)
+[![Version](https://img.shields.io/badge/version-2.00.00-blue.svg)](https://github.com/notgonnahackyou111/Stock-Testing-DEV-ENV)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D14.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Status](https://img.shields.io/badge/status-Production%20Ready-success.svg)](#)
@@ -58,6 +58,7 @@ A comprehensive, professional-grade stock market simulation platform for safely 
 - **Options Page** - Customize capital, risk, mode, difficulty
 - **Bot Connection Page** - Register, manage, and monitor trading bots
 - **Help Documentation** - Comprehensive 8-section help guide with FAQs
+- **Tester Group Chat** - secure chat area accessible after login; only testers and admins may send/receive messages
 - **Responsive Design** - Modern UI with gradients, animations, smooth transitions
 
 ---
@@ -653,6 +654,14 @@ IEX_CLOUD_API_KEY=***
 POLYGON_API_KEY=***
 ```
 
+**Initial Accounts (Optional})**:
+```bash
+ADMIN_USERNAME=admin_user
+ADMIN_PASSWORD=SuperSecurePass123!
+TESTER_USERNAME=test_user
+TESTER_PASSWORD=AnotherSecurePass!
+```
+
 **Setup Instructions**:
 - Copy `.env.example` to `.env`
 - Fill in Firebase credentials ([FIREBASE_SETUP.md](FIREBASE_SETUP.md) guide)
@@ -723,7 +732,7 @@ for any purpose, commercial or non-commercial.
 
 | Version | Date | Changes |
 |---------|------|----------|
-| 1.83.00 | Feb 25, 2026 | Export/import save system with unique codes, 135 stock database, enhanced price volatility (±20% swings), fixed price display consistency, Render deployment ready |
+| 2.00.00 | Feb 26, 2026 | Professional infrastructure (8 improvements): JWT auth, input validation, rate limiting, structured logging, Swagger docs, pagination, error handling, graceful shutdown. Production-ready for Render deployment |
 | 1.0.0 | Feb 12, 2026 | Production release with bot framework, advanced features, real market data |
 | 0.9.0 | Feb 10, 2026 | Bot connection interface, API documentation |
 | 0.8.0 | Feb 8, 2026 | 95 stock database, enhanced simulator |
@@ -760,6 +769,6 @@ Made with ❤️ for traders and developers.
 ```
 ---
 Last Updated: February 25, 2026
-Current Version: 1.83.00
+Current Version: 2.00.00
 Status: Production Ready ✅
 ```

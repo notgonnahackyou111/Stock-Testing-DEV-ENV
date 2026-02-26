@@ -173,6 +173,10 @@
             <h1>Stock Testing</h1>
             <p class="tagline">Professional Trading Simulator with Bot Integration</p>
         </div>
+        <div id="authControls" style="position:absolute; top:10px; right:10px; z-index:40;">
+            <button id="loginBtn">Sign In</button>
+            <span id="userInfo" style="display:none; margin-left:10px;"></span>
+        </div>
     </header>
 
     <main class="main-content">
@@ -214,6 +218,259 @@
     <button id="chatToggle" style="position:fixed; bottom:20px; right:340px; z-index:30; padding:10px 15px; background:#667eea; color:white; border:none; border-radius:5px; cursor:pointer;">Grok</button>
 
     <script>
+        // backend base url (helps when running locally)
+        const BACKEND_URL = window.location.origin;
+        // ---------- authentication & team chat helpers ----------
+        const authTokenKey = 'authToken';
+        const userRoleKey = 'userRole';
+        const usernameKey = 'username';
+
+        const loginBtnEl = document.getElementById('loginBtn');
+        const userInfoEl = document.getElementById('userInfo');
+
+        // create login modal elements
+        const loginModalHtml = `
+<div id="loginModal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:20px; box-shadow:0 0 10px rgba(0,0,0,0.3); z-index:50;">
+    <h3>Tester/Admin Login</h3>
+    <input type="text" id="loginIdentifier" placeholder="Email or username" style="display:block; margin-bottom:8px; width:100%;">
+    <input type="password" id="loginPassword" placeholder="Password" style="display:block; margin-bottom:8px; width:100%;">
+    <button id="loginSubmit">Login</button>
+    <button id="loginCancel" style="margin-left:8px;">Cancel</button>
+    <div id="loginError" style="color:red; margin-top:8px;"></div>
+</div>`;
+        document.body.insertAdjacentHTML('beforeend', loginModalHtml);
+        const loginModal = document.getElementById('loginModal');
+        const loginIdentifier = document.getElementById('loginIdentifier');
+        const loginPassword = document.getElementById('loginPassword');
+        const loginSubmit = document.getElementById('loginSubmit');
+        const loginCancel = document.getElementById('loginCancel');
+        const loginError = document.getElementById('loginError');
+
+        function showLoginModal() {
+            loginError.textContent = '';
+            loginIdentifier.value = '';
+            loginPassword.value = '';
+            loginModal.style.display = 'block';
+        }
+        function hideLoginModal() {
+            loginModal.style.display = 'none';
+        }
+
+        async function performLogin() {
+            const id = loginIdentifier.value.trim();
+            const pw = loginPassword.value;
+            if (!id || !pw) {
+                loginError.textContent = 'Please fill both fields';
+                return;
+            }
+            try {
+                const resp = await fetch(`${BACKEND_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier: id, password: pw })
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    loginError.textContent = data.error || 'Login failed';
+                    return;
+                }
+                sessionStorage.setItem(authTokenKey, data.token);
+                sessionStorage.setItem(userRoleKey, data.role);
+                sessionStorage.setItem(usernameKey, data.username || data.email || '');
+                hideLoginModal();
+                updateAuthUI();
+            } catch (e) {
+                loginError.textContent = 'Network error';
+            }
+        }
+
+        function logout() {
+            sessionStorage.removeItem(authTokenKey);
+            sessionStorage.removeItem(userRoleKey);
+            sessionStorage.removeItem(usernameKey);
+            updateAuthUI();
+        }
+
+        loginBtnEl.addEventListener('click', showLoginModal);
+        loginSubmit.addEventListener('click', performLogin);
+        loginCancel.addEventListener('click', hideLoginModal);
+
+        // team chat UI
+        const teamChatToggle = document.createElement('button');
+        teamChatToggle.id = 'teamChatToggle';
+        teamChatToggle.textContent = 'Team Chat';
+        teamChatToggle.style.cssText = 'position:fixed; bottom:20px; right:680px; z-index:30; padding:10px 15px; background:#444; color:white; border:none; border-radius:5px; cursor:pointer; display:none;';
+        document.body.appendChild(teamChatToggle);
+
+        const teamChatBoxHtml = `<div id="teamChatbox" class="chatbox" style="display:none; position:fixed; bottom:20px; right:660px; width:300px; height:400px; background:white; box-shadow:0 0 10px rgba(0,0,0,0.3); z-index:30; border-radius:8px; display:flex; flex-direction:column;">
+        <div style="padding:8px; background:#444; color:white; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
+            Team Chat <button id="closeTeamChat" style="background:none;border:none;color:white;font-size:16px;cursor:pointer;">&times;</button>
+        </div>
+        <div id="teamMessages" style="overflow-y:auto; flex:1;padding:10px; font-size:14px;"></div>
+        <div style="display:flex; border-top:1px solid #eee;">
+            <input id="teamInput" style="flex:1; padding:5px; border:none;" placeholder="Say something...">
+            <button id="sendTeam" style="padding:5px 10px; border:none; background:#444; color:white; cursor:pointer;">Send</button>
+        </div>
+    </div>`;
+        document.body.insertAdjacentHTML('beforeend', teamChatBoxHtml);
+        const teamChatbox = document.getElementById('teamChatbox');
+        const closeTeamChat = document.getElementById('closeTeamChat');
+        const teamMessages = document.getElementById('teamMessages');
+        const teamInput = document.getElementById('teamInput');
+        const sendTeam = document.getElementById('sendTeam');
+
+        teamChatToggle.addEventListener('click', () => {
+            teamChatbox.style.display = 'flex';
+            loadTeamMessages();
+        });
+        closeTeamChat.addEventListener('click', () => {
+            teamChatbox.style.display = 'none';
+        });
+        sendTeam.addEventListener('click', async () => {
+            const text = teamInput.value.trim();
+            if (!text) return;
+            const token = sessionStorage.getItem(authTokenKey);
+            try {
+                await fetch(`${BACKEND_URL}/api/chat/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ text })
+                });
+            } catch (e) {
+                console.error('chat post error', e);
+            }
+            teamInput.value = '';
+            loadTeamMessages();
+        });
+
+        async function loadTeamMessages() {
+            const token = sessionStorage.getItem(authTokenKey);
+            if (!token) return;
+            try {
+                const resp = await fetch(`${BACKEND_URL}/api/chat/messages`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    teamMessages.innerHTML = data.messages.map(m =>
+                        `<div><strong>${m.displayName}</strong>: ${m.text}</div>`
+                    ).join('');
+                }
+            } catch (e) {
+                console.error('chat fetch error', e);
+            }
+        }
+
+        function updateAuthUI() {
+            const token = sessionStorage.getItem(authTokenKey);
+            const role = sessionStorage.getItem(userRoleKey);
+            const name = sessionStorage.getItem(usernameKey);
+            if (token && (role === 'tester' || role === 'admin')) {
+                loginBtnEl.style.display = 'none';
+                userInfoEl.style.display = 'inline';
+                userInfoEl.textContent = `${name} (${role}) [logout]`;
+                teamChatToggle.style.display = 'block';
+                userInfoEl.onclick = logout;
+            } else {
+                loginBtnEl.style.display = 'inline';
+                userInfoEl.style.display = 'none';
+                teamChatToggle.style.display = 'none';
+                teamChatbox.style.display = 'none';
+            }
+        }
+
+        // verify token on load
+        (async () => {
+            const token = sessionStorage.getItem(authTokenKey);
+            if (token) {
+                try {
+                    const resp = await fetch(`${BACKEND_URL}/api/auth/verify`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!resp.ok) {
+                        logout();
+                    } else {
+                        const data = await resp.json();
+                        sessionStorage.setItem(userRoleKey, data.user.role);
+                        sessionStorage.setItem(usernameKey, data.user.username || data.user.email || '');
+                    }
+                } catch (e) {
+                    logout();
+                }
+            }
+            updateAuthUI();
+        })();
+
+        // ---------- WebSocket for live team chat ----------
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}`;
+        let chatSocket = null;
+        let wsReconnectTimer = null;
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+        }
+
+        function appendChatMessage(m) {
+            const el = document.createElement('div');
+            el.innerHTML = `<strong>${escapeHtml(m.displayName || 'User')}</strong>: ${escapeHtml(m.text)}`;
+            teamMessages.appendChild(el);
+            teamMessages.scrollTop = teamMessages.scrollHeight;
+        }
+
+        function connectChatSocket() {
+            if (chatSocket && (chatSocket.readyState === WebSocket.OPEN || chatSocket.readyState === WebSocket.CONNECTING)) return;
+            try {
+                chatSocket = new WebSocket(wsUrl);
+            } catch (e) {
+                console.error('WebSocket create failed', e);
+                scheduleReconnect();
+                return;
+            }
+
+            chatSocket.onopen = () => {
+                console.log('[WS] connected to', wsUrl);
+                // fetch initial history when connected
+                loadTeamMessages();
+            };
+
+            chatSocket.onmessage = (evt) => {
+                try {
+                    const data = JSON.parse(evt.data);
+                    if (data && data.type === 'chat' && data.message) {
+                        appendChatMessage(data.message);
+                    }
+                } catch (e) {
+                    console.error('WS message parse error', e);
+                }
+            };
+
+            chatSocket.onclose = (e) => {
+                console.log('[WS] closed', e.code);
+                scheduleReconnect();
+            };
+
+            chatSocket.onerror = (err) => {
+                console.error('[WS] error', err);
+                chatSocket.close();
+            };
+        }
+
+        function scheduleReconnect() {
+            if (wsReconnectTimer) return;
+            wsReconnectTimer = setTimeout(() => {
+                wsReconnectTimer = null;
+                connectChatSocket();
+            }, 3000);
+        }
+
+        // attempt to connect on load
+        connectChatSocket();
+
         // navigation functions
         function startTest() {
             window.location.href = 'test.html';

@@ -327,6 +327,74 @@ async function createTesterAccount(username, password, displayName) {
     return registerUser({ username, password, displayName, role: 'tester' });
 }
 
+/**
+ * Force create or update a user (used for seeding admin/tester accounts at startup).
+ * If the username or email exists it will overwrite the password and role.
+ */
+async function forceCreateUser({ email, username, password, displayName, role = 'user' }) {
+    const db = getDatabase();
+    const emailLower = email ? email.toLowerCase() : null;
+    const userLower = username ? username.toLowerCase().trim() : null;
+
+    const passwordHash = await hashPassword(password);
+    let userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const userData = {
+        userId,
+        email: emailLower,
+        username: userLower,
+        displayName: displayName || (emailLower ? emailLower.split('@')[0] : userLower),
+        passwordHash,
+        role,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        status: 'active',
+        stats: {
+            gamesPlayed: 0,
+            totalReturns: 0,
+            bestReturn: 0,
+            averageReturn: 0
+        }
+    };
+
+    if (db && isFirebaseReady()) {
+        try {
+            // try find existing user by username or email
+            let snapshot = null;
+            if (emailLower) {
+                snapshot = await db.collection('users').where('email', '==', emailLower).limit(1).get();
+            }
+            if (!snapshot || snapshot.empty) {
+                snapshot = await db.collection('users').where('username', '==', userLower).limit(1).get();
+            }
+
+            if (snapshot && !snapshot.empty) {
+                const doc = snapshot.docs[0];
+                userId = doc.id;
+                await db.collection('users').doc(userId).update(Object.assign({}, userData, { userId }));
+                return Object.assign({}, userData, { userId });
+            }
+
+            await db.collection('users').doc(userId).set(userData);
+            return userData;
+        } catch (error) {
+            console.error('[User] forceCreateUser Firebase error:', error.message);
+            // fall through to in-memory
+        }
+    }
+
+    // in-memory fallback: remove any existing by username/email
+    for (let [id, u] of users.entries()) {
+        if ((emailLower && u.email === emailLower) || (userLower && u.username === userLower)) {
+            userId = id;
+            users.set(userId, Object.assign({}, userData, { userId }));
+            return Object.assign({}, userData, { userId });
+        }
+    }
+
+    users.set(userId, Object.assign({}, userData, { userId }));
+    return Object.assign({}, userData, { userId });
+}
+
 module.exports = {
     registerUser,
     loginUser,
@@ -339,3 +407,6 @@ module.exports = {
     createAdminAccount,
     createTesterAccount
 };
+
+module.exports.forceCreateUser = forceCreateUser;
+
